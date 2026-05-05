@@ -4,37 +4,10 @@ import os
 import re
 import time
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import psycopg2
 from psycopg2.extras import execute_values
 from xml.etree import ElementTree as ET
-
-
-def _load_env_file() -> None:
-    # .env 파일이 있으면 환경변수로 로드합니다 (이미 설정된 변수는 덮어쓰지 않음).
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(env_path):
-        return
-    with open(env_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-_load_env_file()
-
-# DB 연결 정보 (.env 또는 환경변수로 설정) 
-DB_CONFIG = {
-    "host":     os.environ.get("DB_HOST",     "localhost"),
-    "port":     os.environ.get("DB_PORT",     "5432"),
-    "dbname":   os.environ.get("DB_NAME",     "postgres"),
-    "user":     os.environ.get("DB_USER",     "postgres"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-}
+from utils import DB_CONFIG, sec_session
 
 # 사용자 분기 → SEC 인덱스 파일 쿼터 매핑
 # 13F-HR은 분기말 45일 이내 제출 → 인덱스 쿼터가 보고 분기와 다름
@@ -46,25 +19,11 @@ QUARTER_TO_INDEX = {
     4: (1, 1),  # Q4(12-31) → 다음 해 QTR1 (1~2월 제출)
 }
 
-SEC_HEADERS = {
-    "User-Agent": "NPS-13F-Tracker lcmoony1@gmail.com",  # SEC 정책: User-Agent 필수
-    "Accept-Encoding": "gzip, deflate",
-}
-
 # form.idx 파싱용 정규식
 # 컬럼: FormType  CompanyName  CIK  DateFiled  Filename
 _IDX_RE = re.compile(
     r'^(.+?)\s{2,}(.+?)\s{2,}(\d+)\s+(\d{4}-\d{2}-\d{2})\s+(edgar/.+)$'
 )
-
-
-def sec_session() -> requests.Session:
-    """타임아웃·재시도 설정이 적용된 requests Session을 반환합니다."""
-    session = requests.Session()
-    retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
-    session.mount("https://", HTTPAdapter(max_retries=retry))
-    session.headers.update(SEC_HEADERS)
-    return session
 
 
 # ─────────────────────────────────────────────────────────────────────────────

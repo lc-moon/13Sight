@@ -2,46 +2,18 @@
 import sys
 import os
 import time
-import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import psycopg2
 from xml.etree import ElementTree as ET
+from utils import DB_CONFIG, sec_session
 
-# ── DB 연결 정보 (환경변수로 설정) ──────────────────────────────────────────
-DB_CONFIG = {
-    "host":     os.environ.get("DB_HOST",     "localhost"),
-    "port":     os.environ.get("DB_PORT",     "5432"),
-    "dbname":   os.environ.get("DB_NAME",     "postgres"),
-    "user":     os.environ.get("DB_USER",     "postgres"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-}
-
-# ── 국민연금 SEC EDGAR CIK ───────────────────────────────────────────────────
 NPS_CIK = "0001608046"   # National Pension Service of Korea (전주시, 전라북도)
 
-# ── 사용자 분기 → SEC period_of_report 매핑 ─────────────────────────────────
-# 사용자 정의 분기와 SEC 13F 제출 기준 분기말 날짜를 일치시킵니다.
 QUARTER_PERIOD = {
     1: "03-31",
     2: "06-30",
     3: "09-30",
     4: "12-31",
 }
-
-SEC_HEADERS = {
-    "User-Agent": "NPS-13F-Tracker lcmoony1@gmail.com",  # SEC 정책: User-Agent 필수
-    "Accept-Encoding": "gzip, deflate",
-}
-
-
-def sec_session() -> requests.Session:
-    """타임아웃·재시도 설정이 적용된 requests Session을 반환합니다."""
-    session = requests.Session()
-    retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
-    session.mount("https://", HTTPAdapter(max_retries=retry))
-    session.headers.update(SEC_HEADERS)
-    return session
 
 
 def find_filing(year: int, quarter: int) -> tuple:

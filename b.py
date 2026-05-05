@@ -1,34 +1,9 @@
 """13F 보유 종목 검색 및 기관별 포트폴리오 비교 분석을 제공하는 Flask 웹 서버."""
-import os
 import psycopg2
 from flask import Flask, request, jsonify
+from utils import DB_CONFIG
 
 app = Flask(__name__)
-
-
-def _load_env_file() -> None:
-    """.env 파일을 읽어 환경 변수로 등록한다. 이미 설정된 키는 덮어쓰지 않는다."""
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(env_path):
-        return
-    with open(env_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-_load_env_file()
-
-DB_CONFIG = {
-    "host":     os.environ.get("DB_HOST",     "localhost"),
-    "port":     os.environ.get("DB_PORT",     "5432"),
-    "dbname":   os.environ.get("DB_NAME",     "postgres"),
-    "user":     os.environ.get("DB_USER",     "postgres"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-}
 
 
 def fetch_top100():

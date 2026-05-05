@@ -2,54 +2,14 @@
 import os
 import time
 import requests
-from requests.adapters import HTTPAdapter
-from urllib3.util.retry import Retry
 import psycopg2
 from psycopg2.extras import execute_values
 from xml.etree import ElementTree as ET
-
-
-def _load_env_file() -> None:
-    """.env 파일을 읽어 환경 변수로 등록한다. 이미 설정된 키는 덮어쓰지 않는다."""
-    env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
-    if not os.path.exists(env_path):
-        return
-    with open(env_path, encoding="utf-8") as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith("#") or "=" not in line:
-                continue
-            key, _, value = line.partition("=")
-            os.environ.setdefault(key.strip(), value.strip())
-
-
-_load_env_file()
-
-DB_CONFIG = {
-    "host":     os.environ.get("DB_HOST",     "localhost"),
-    "port":     os.environ.get("DB_PORT",     "5432"),
-    "dbname":   os.environ.get("DB_NAME",     "postgres"),
-    "user":     os.environ.get("DB_USER",     "postgres"),
-    "password": os.environ.get("DB_PASSWORD", ""),
-}
+from utils import DB_CONFIG, sec_session
 
 OPENFIGI_URL        = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_BATCH_FREE = 10   # API 키 없을 때 최대 10개
 OPENFIGI_BATCH_KEY  = 100  # API 키 있을 때 최대 100개
-
-SEC_HEADERS = {
-    "User-Agent": "NPS-13F-Tracker lcmoony1@gmail.com",
-    "Accept-Encoding": "gzip, deflate",
-}
-
-
-def sec_session() -> requests.Session:
-    """SEC EDGAR 요청용 Session을 생성한다. 재시도 3회·지수 백오프를 적용한다."""
-    session = requests.Session()
-    retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
-    session.mount("https://", HTTPAdapter(max_retries=retry))
-    session.headers.update(SEC_HEADERS)
-    return session
 
 
 def create_holdings_table(conn) -> None:
