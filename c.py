@@ -1,3 +1,4 @@
+"""institution 테이블 상위 100개 기관의 최근 2개 분기 13F 보유 종목을 수집해 holdings 테이블에 UPSERT한다."""
 import os
 import time
 import requests

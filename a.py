@@ -1,3 +1,4 @@
+"""국민연금(NPS) 단일 기관의 13F-HR 운용금액을 수집해 pension_holdings 테이블에 저장하는 프로토타입."""
 import sys
 import os
 import time

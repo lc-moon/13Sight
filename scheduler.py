@@ -1,3 +1,4 @@
+"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 aa.py를 자동 실행하는 APScheduler 스케줄러."""
 import os
 import subprocess
 from datetime import datetime

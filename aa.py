@@ -1,3 +1,4 @@
+"""SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액을 수집해 institution 테이블에 UPSERT한다."""
 import sys
 import os
 import re

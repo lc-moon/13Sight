@@ -1,3 +1,4 @@
+"""13F 보유 종목 검색 및 기관별 포트폴리오 비교 분석을 제공하는 Flask 웹 서버."""
 import os
 import psycopg2
 from flask import Flask, request, jsonify
