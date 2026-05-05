@@ -221,8 +221,8 @@ def main(year_arg: str, quarter_str: str) -> None:
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python aa.py <year> <quarter>")
-        print("  예시: python aa.py 25 1  또는  python aa.py 2025 1")
+        print("Usage: python collect_institutions.py <year> <quarter>")
+        print("  예시: python collect_institutions.py 25 1  또는  python collect_institutions.py 2025 1")
         sys.exit(1)
 
     main(sys.argv[1], sys.argv[2])

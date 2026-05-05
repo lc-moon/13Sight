@@ -1,4 +1,4 @@
-"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 aa.py를 자동 실행하는 APScheduler 스케줄러."""
+"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 collect_institutions.py를 자동 실행하는 APScheduler 스케줄러."""
 import os
 import subprocess
 from datetime import datetime
@@ -46,7 +46,7 @@ def get_quarter(date_obj):
     return year, quarter
 
 def check_and_run():
-    """날짜를 확인하고 조건에 맞으면 aa.py를 실행합니다."""
+    """날짜를 확인하고 조건에 맞으면 collect_institutions.py를 실행합니다."""
     now = datetime.now()
     current_month = now.month
     current_day = now.day
@@ -55,24 +55,23 @@ def check_and_run():
 
     # 오늘이 지정된 날짜 중 하나인지 확인
     if (current_month, current_day) in TARGET_DATES:
-        print(f"[{timestamp}] ✓ 지정된 날짜입니다. aa.py를 실행합니다.")
+        print(f"[{timestamp}] ✓ 지정된 날짜입니다. collect_institutions.py를 실행합니다.")
 
         # 연도와 분기 정보 가져오기
         year, quarter = get_quarter(now)
 
-        # aa.py와 같은 폴더에서 aa.py 실행
         script_dir = os.path.dirname(os.path.abspath(__file__))
-        aa_py_path = os.path.join(script_dir, 'aa.py')
+        aa_py_path = os.path.join(script_dir, 'collect_institutions.py')
 
         try:
             result = subprocess.run(['python', aa_py_path, str(year), str(quarter)], capture_output=True, text=True)
-            print(f"[{timestamp}] aa.py 실행 완료")
+            print(f"[{timestamp}] collect_institutions.py 실행 완료")
             if result.stdout:
                 print(f"[{timestamp}] 출력: {result.stdout.strip()}")
             if result.stderr:
                 print(f"[{timestamp}] 오류: {result.stderr.strip()}")
         except Exception as e:
-            print(f"[{timestamp}] aa.py 실행 중 오류 발생: {e}")
+            print(f"[{timestamp}] collect_institutions.py 실행 중 오류 발생: {e}")
     else:
         print(f"[{timestamp}] ✗ 지정된 날짜가 아닙니다. (현재: {current_month}월 {current_day}일)")
 

@@ -292,7 +292,7 @@ def institution_detail(cik):
 <body>
   <h2>CIK {cik_display} 보유 종목</h2>
   <p><a href="/">← 목록으로</a></p>
-  <p>데이터 없음 — c.py를 먼저 실행해 holdings 데이터를 수집하세요.</p>
+  <p>데이터 없음 — collect_holdings.py를 먼저 실행해 holdings 데이터를 수집하세요.</p>
 </body></html>"""
 
     latest_date = dates[0]
