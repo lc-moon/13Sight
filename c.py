@@ -9,6 +9,7 @@ from xml.etree import ElementTree as ET
 
 
 def _load_env_file() -> None:
+    """.env 파일을 읽어 환경 변수로 등록한다. 이미 설정된 키는 덮어쓰지 않는다."""
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.exists(env_path):
         return
@@ -42,6 +43,7 @@ SEC_HEADERS = {
 
 
 def sec_session() -> requests.Session:
+    """SEC EDGAR 요청용 Session을 생성한다. 재시도 3회·지수 백오프를 적용한다."""
     session = requests.Session()
     retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
     session.mount("https://", HTTPAdapter(max_retries=retry))
@@ -50,6 +52,7 @@ def sec_session() -> requests.Session:
 
 
 def create_holdings_table(conn) -> None:
+    """holdings 테이블과 유니크 인덱스를 생성한다. 이미 존재하면 유지한다."""
     with conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -96,6 +99,7 @@ def fetch_tickers_by_cusip(session: requests.Session, cusips: list, cache: dict)
 
     for i in range(0, len(new_cusips), batch_size):
         batch = new_cusips[i:i + batch_size]
+        # 알파벳으로 시작하면 캐나다 증권(CINS), 그 외는 미국 CUSIP
         payload = [
             {"idType": "ID_CINS" if c[0].isalpha() else "ID_CUSIP", "idValue": c}
             for c in batch
@@ -116,6 +120,7 @@ def fetch_tickers_by_cusip(session: requests.Session, cusips: list, cache: dict)
 
 
 def fetch_top100_ciks(conn) -> list:
+    """institution 테이블에서 운용금액 상위 100개 기관의 CIK 목록을 반환한다."""
     with conn.cursor() as cur:
         cur.execute(
             "SELECT cik FROM institution ORDER BY amount_usd DESC LIMIT 100"
@@ -197,7 +202,7 @@ def parse_infotable(session: requests.Session, cik: str, accession: str, filenam
                         shares = int(child.text.strip())
 
         if company_name and cusip and value_raw is not None:
-            rows.append((company_name, cusip, value_raw * 1000, shares))
+            rows.append((company_name, cusip, value_raw * 1000, shares))  # 13F value는 천 달러 단위
 
     return rows
 
@@ -244,6 +249,7 @@ def save_holdings(conn, cik: str, accession: str, report_date: str, rows: list, 
 
 
 def main() -> None:
+    """상위 100개 기관의 최근 2개 분기 13F 보유 종목을 수집해 DB에 저장한다."""
     session = sec_session()
     conn = psycopg2.connect(**DB_CONFIG)
 

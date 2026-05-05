@@ -6,6 +6,7 @@ app = Flask(__name__)
 
 
 def _load_env_file() -> None:
+    """.env 파일을 읽어 환경 변수로 등록한다. 이미 설정된 키는 덮어쓰지 않는다."""
     env_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".env")
     if not os.path.exists(env_path):
         return
@@ -30,6 +31,7 @@ DB_CONFIG = {
 
 
 def fetch_top100():
+    """institution 테이블에서 운용금액 상위 100개 기관을 조회한다."""
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
@@ -47,8 +49,9 @@ def fetch_top100():
 
 
 def fetch_search_results(q: str) -> list:
+    """기관명·CIK로 institution 테이블을 검색하여 운용금액 순 최대 10개를 반환한다."""
     conn = psycopg2.connect(**DB_CONFIG)
-    q_stripped = q.lstrip("0") or "0"
+    q_stripped = q.lstrip("0") or "0"  # zero-padded CIK로 검색할 때도 숫자 부분으로 매칭
     try:
         with conn.cursor() as cur:
             cur.execute(
@@ -69,6 +72,7 @@ def fetch_search_results(q: str) -> list:
 
 
 def fetch_report_dates(cik: str) -> list:
+    """특정 CIK의 holdings 보고일자 목록을 최신순으로 반환한다."""
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
@@ -82,11 +86,13 @@ def fetch_report_dates(cik: str) -> list:
 
 
 def quarter_label(d) -> str:
+    """date 객체를 '2024 Q3' 형식 문자열로 변환한다."""
     q = (d.month - 1) // 3 + 1
     return f"{d.year} Q{q}"
 
 
 def fetch_holdings(cik: str, report_date=None) -> list:
+    """특정 CIK·보고일자의 보유 종목 전체를 평가금액 내림차순으로 반환한다."""
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
@@ -105,18 +111,21 @@ def fetch_holdings(cik: str, report_date=None) -> list:
 
 
 def _fmt_value(v) -> str:
+    """금액을 '$1,234,567' 형식으로 포맷한다. None이면 '-'를 반환한다."""
     if v is None:
         return "-"
     return f"${abs(v):,.0f}"
 
 
 def _fmt_shares(v) -> str:
+    """수량을 '1,234,567' 형식으로 포맷한다. None이면 '-'를 반환한다."""
     if v is None:
         return "-"
     return f"{abs(v):,}"
 
 
 def change_html_value(current, previous) -> str:
+    """전분기 대비 평가금액 변동을 ▲빨강/▼파랑 색상 HTML로 반환한다."""
     base = _fmt_value(current)
     if previous is None:
         diff = current or 0
@@ -132,6 +141,7 @@ def change_html_value(current, previous) -> str:
 
 
 def change_html_shares(current, previous) -> str:
+    """전분기 대비 보유수량 변동을 ▲빨강/▼파랑 색상 HTML로 반환한다."""
     base = _fmt_shares(current)
     if previous is None:
         diff = current or 0
@@ -148,6 +158,7 @@ def change_html_shares(current, previous) -> str:
 
 @app.route("/api/search")
 def api_search():
+    """GET /api/search?q=… — 자동완성용 기관 검색 결과를 JSON으로 반환한다."""
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
@@ -160,6 +171,7 @@ def api_search():
 
 @app.route("/")
 def index():
+    """GET / — 검색창과 운용금액 상위 100개 기관 목록을 렌더링한다."""
     rows = fetch_top100()
 
     table_rows = ""
@@ -293,8 +305,9 @@ def index():
 
 @app.route("/institution/<cik>")
 def institution_detail(cik):
+    """GET /institution/<cik> — 기관의 보유 종목을 5개 탭(전체·매수·매도·신규매수·전량매도)으로 렌더링한다."""
     cik_display = cik.zfill(10)
-    cik_raw     = str(int(cik))
+    cik_raw     = str(int(cik))  # DB는 leading zero 없이 저장되므로 정수 변환 후 문자열화
 
     dates = fetch_report_dates(cik_raw)
     if not dates:
@@ -363,6 +376,7 @@ def institution_detail(cik):
             key=lambda x: -(x[0][3] or 0),
         )
     elif tab == "full_sell":
+        # 이전 분기에는 있지만 최신 분기에 없는 종목 = 전량 매도; prev 기준으로 순회
         display = sorted(
             [
                 (row, None, True)
