@@ -81,10 +81,10 @@ def fetch_tickers_by_cusip(session: requests.Session, cusips: list, cache: dict)
 
 
 def fetch_top100_ciks(conn) -> list:
-    """institution 테이블에서 운용금액 상위 100개 기관의 CIK 목록을 반환한다."""
+    """top100_institutions 테이블에서 rank 순으로 CIK 목록을 반환한다."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT cik FROM institution ORDER BY amount_usd DESC LIMIT 100"
+            "SELECT cik FROM top100_institutions ORDER BY rank ASC"
         )
         return [row[0] for row in cur.fetchall()]
 

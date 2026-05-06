@@ -7,16 +7,15 @@ app = Flask(__name__)
 
 
 def fetch_top100():
-    """institution 테이블에서 운용금액 상위 100개 기관을 조회한다."""
+    """top100_institutions 테이블에서 rank 순으로 상위 100개 기관을 조회한다."""
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT cik, institution, amount_usd
-                FROM institution
-                ORDER BY amount_usd DESC
-                LIMIT 100
+                SELECT rank, cik, institution, curr_amount_usd, prev_amount_usd
+                FROM top100_institutions
+                ORDER BY rank ASC
                 """
             )
             return cur.fetchall()
@@ -25,7 +24,7 @@ def fetch_top100():
 
 
 def fetch_search_results(q: str) -> list:
-    """기관명·CIK로 institution 테이블을 검색하여 운용금액 순 최대 10개를 반환한다."""
+    """기관명·CIK로 all_institutions 테이블을 검색하여 운용금액 순 최대 10개를 반환한다."""
     conn = psycopg2.connect(**DB_CONFIG)
     q_stripped = q.lstrip("0") or "0"  # zero-padded CIK로 검색할 때도 숫자 부분으로 매칭
     try:
@@ -33,10 +32,9 @@ def fetch_search_results(q: str) -> list:
             cur.execute(
                 """
                 SELECT cik, institution
-                FROM institution
-                WHERE institution ILIKE %s
-                   OR cik::text LIKE %s
-                   OR cik::text LIKE %s
+                FROM all_institutions
+                WHERE report_date = (SELECT MAX(report_date) FROM all_institutions)
+                  AND (institution ILIKE %s OR cik::text LIKE %s OR cik::text LIKE %s)
                 ORDER BY amount_usd DESC
                 LIMIT 10
                 """,
@@ -140,7 +138,7 @@ def api_search():
         return jsonify([])
     rows = fetch_search_results(q)
     return jsonify([
-        {"cik": str(cik).zfill(10), "institution": institution}
+        {"cik": cik, "institution": institution}
         for cik, institution in rows
     ])
 
@@ -151,14 +149,14 @@ def index():
     rows = fetch_top100()
 
     table_rows = ""
-    for rank, (cik, institution, amount_usd) in enumerate(rows, 1):
-        padded_cik = str(cik).zfill(10)
+    for rank, cik, institution, curr_amount_usd, prev_amount_usd in rows:
+        aum_html = change_html_value(curr_amount_usd, prev_amount_usd)
         table_rows += (
             f"<tr>"
             f"<td>{rank}</td>"
-            f"<td>{padded_cik}</td>"
-            f'<td><a href="/institution/{padded_cik}">{institution}</a></td>'
-            f"<td>${amount_usd:,.0f}</td>"
+            f"<td>{cik}</td>"
+            f'<td><a href="/institution/{cik}">{institution}</a></td>'
+            f"<td>{aum_html}</td>"
             f"</tr>\n"
         )
 
@@ -283,7 +281,7 @@ def index():
 def institution_detail(cik):
     """GET /institution/<cik> — 기관의 보유 종목을 5개 탭(전체·매수·매도·신규매수·전량매도)으로 렌더링한다."""
     cik_display = cik.zfill(10)
-    cik_raw     = str(int(cik))  # DB는 leading zero 없이 저장되므로 정수 변환 후 문자열화
+    cik_raw     = cik_display  # DB에 10자리 제로패딩으로 저장됨
 
     dates = fetch_report_dates(cik_raw)
     if not dates:

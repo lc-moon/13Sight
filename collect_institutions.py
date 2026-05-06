@@ -1,6 +1,5 @@
-"""SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액을 수집해 institution 테이블에 UPSERT한다."""
+"""SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액을 수집해 all_institutions 테이블에 저장한다."""
 import sys
-import os
 import re
 import time
 import requests
@@ -8,6 +7,9 @@ import psycopg2
 from psycopg2.extras import execute_values
 from xml.etree import ElementTree as ET
 from utils import DB_CONFIG, sec_session
+
+# 분기말 날짜 (report_date 계산용)
+QUARTER_END = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
 
 # 사용자 분기 → SEC 인덱스 파일 쿼터 매핑
 # 13F-HR은 분기말 45일 이내 제출 → 인덱스 쿼터가 보고 분기와 다름
@@ -27,7 +29,7 @@ _IDX_RE = re.compile(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 전체 기관 13F 수집 / institution 테이블
+# 헬퍼
 # ─────────────────────────────────────────────────────────────────────────────
 
 def quarter_to_index_quarter(year: int, quarter: int) -> tuple:
@@ -36,10 +38,21 @@ def quarter_to_index_quarter(year: int, quarter: int) -> tuple:
     return year + year_offset, idx_qtr
 
 
+def prev_quarter_date(year: int, quarter: int) -> str:
+    """해당 분기의 직전 분기 report_date 문자열(YYYY-MM-DD)을 반환합니다."""
+    if quarter == 1:
+        return f"{year - 1}-{QUARTER_END[4]}"
+    return f"{year}-{QUARTER_END[quarter - 1]}"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 데이터 수집
+# ─────────────────────────────────────────────────────────────────────────────
+
 def fetch_all_13f_filings(session: requests.Session, idx_year: int, idx_qtr: int) -> list:
     """
     EDGAR 분기 인덱스(form.idx)에서 13F-HR 제출 목록을 반환합니다.
-    반환: [(cik, accession_number, company_name), ...]
+    반환: [(cik, accession_number), ...]
     """
     url = (
         f"https://www.sec.gov/Archives/edgar/full-index/"
@@ -95,7 +108,6 @@ def get_institution_data(session: requests.Session, cik: str, accession: str):
         for el in root.iter():
             tag = el.tag.split("}")[-1]
 
-            # 스키마 버전: 단위 결정에 사용
             if tag == "schemaVersion" and el.text:
                 schema_version = el.text.strip()
 
@@ -110,9 +122,9 @@ def get_institution_data(session: requests.Session, cik: str, accession: str):
             if tag == "tableValueTotal" and el.text:
                 amount_raw = int(el.text.strip())
 
-        # 스키마 버전에 따른 단위 변환
-        # X0202 이상: 달러 단위 직접 기재 → 변환 없음
+        # X0202(2023년 이후): 달러 단위 직접 기재 → 변환 없음
         # X0106 및 구버전: 천 달러 단위 → ×1000
+        # 단, 일부 기관이 X0202 스키마에서 천달러 단위로 잘못 신고하는 filing 오류가 있음 (e.g. T. Rowe Price)
         if amount_raw is not None:
             amount = amount_raw if schema_version == "X0202" else amount_raw * 1000
         else:
@@ -132,15 +144,46 @@ def get_institution_data(session: requests.Session, cik: str, accession: str):
     return institution, amount
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# DB 저장
+# ─────────────────────────────────────────────────────────────────────────────
+
+def fetch_prev_quarter_amount(session: requests.Session, cik_padded: str, prev_report_date: str):
+    """
+    EDGAR submissions API로 특정 CIK의 직전 분기 13F-HR accession을 찾아
+    primary_doc.xml에서 운용금액을 파싱합니다.
+    성공 시 amount_usd, 실패 시 None 반환.
+    """
+    url = f"https://data.sec.gov/submissions/CIK{cik_padded}.json"
+    try:
+        resp = session.get(url, timeout=60)
+        resp.raise_for_status()
+        recent = resp.json()["filings"]["recent"]
+
+        accession = None
+        for i, form in enumerate(recent["form"]):
+            if form == "13F-HR" and recent["reportDate"][i] == prev_report_date:
+                accession = recent["accessionNumber"][i]
+                break
+
+        if accession is None:
+            return None
+
+        cik_raw = str(int(cik_padded))  # EDGAR data URL은 숫자 CIK 사용
+        _, amount = get_institution_data(session, cik_raw, accession)
+        return amount
+    except Exception as e:
+        print(f"  [PREV] CIK={cik_padded} | {e}")
+        return None
+
+
 def save_institutions_to_db(records: list) -> int:
     """
-    institution 테이블에 (cik, institution, amount_usd) 레코드를 UPSERT합니다.
-    cik 기준 중복 시 institution·amount_usd를 최신 값으로 갱신합니다.
-    같은 배치 내 cik 중복은 마지막 값으로 유지합니다.
-    반환: 중복 제거된 CIK 수
+    all_institutions 테이블을 TRUNCATE 후 records를 bulk INSERT합니다.
+    같은 배치 내 (cik, report_date) 중복은 마지막 값으로 유지합니다.
+    반환: 중복 제거 전후 차이(중복 수)
     """
-    # 같은 배치 내 cik 중복 제거 (PostgreSQL ON CONFLICT는 배치 내 중복을 허용하지 않음)
-    deduped = {row[0]: row for row in records}
+    deduped = {(row[0], row[3]): row for row in records}
     unique_records = list(deduped.values())
     dup_count = len(records) - len(unique_records)
 
@@ -150,29 +193,89 @@ def save_institutions_to_db(records: list) -> int:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    CREATE TABLE IF NOT EXISTS institution (
+                    CREATE TABLE IF NOT EXISTS all_institutions (
                         cik         VARCHAR(20)  NOT NULL,
                         institution VARCHAR(500) NOT NULL,
                         amount_usd  BIGINT       NOT NULL,
-                        CONSTRAINT institution_cik_unique UNIQUE (cik)
+                        report_date DATE,
+                        CONSTRAINT all_institutions_cik_date_unique UNIQUE (cik, report_date)
                     )
                     """
                 )
+                cur.execute("TRUNCATE TABLE all_institutions")
                 execute_values(
                     cur,
-                    """
-                    INSERT INTO institution (cik, institution, amount_usd)
-                    VALUES %s
-                    ON CONFLICT (cik) DO UPDATE
-                        SET institution = EXCLUDED.institution,
-                            amount_usd  = EXCLUDED.amount_usd
-                    """,
+                    "INSERT INTO all_institutions (cik, institution, amount_usd, report_date) VALUES %s",
                     unique_records,
                 )
     finally:
         conn.close()
 
     return dup_count
+
+
+def build_top100_institutions(session: requests.Session, report_date: str, prev_report_date: str) -> None:
+    """
+    all_institutions에서 현재 분기 상위 100개 기관을 선정하고,
+    각 기관의 직전 분기 운용금액을 EDGAR API로 조회해
+    top100_institutions 테이블을 TRUNCATE 후 rank 포함 INSERT합니다.
+    """
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS top100_institutions (
+                    rank            SMALLINT     NOT NULL,
+                    cik             VARCHAR(20)  NOT NULL,
+                    institution     VARCHAR(500) NOT NULL,
+                    prev_amount_usd BIGINT,
+                    curr_amount_usd BIGINT       NOT NULL,
+                    report_date     DATE
+                )
+                """
+            )
+            cur.execute("TRUNCATE TABLE top100_institutions")
+            cur.execute(
+                """
+                SELECT cik, institution, amount_usd
+                FROM all_institutions
+                WHERE report_date = %s
+                ORDER BY amount_usd DESC
+                LIMIT 100
+                """,
+                (report_date,)
+            )
+            top100 = cur.fetchall()
+        conn.commit()
+    finally:
+        conn.close()
+
+    print(f"\n직전 분기({prev_report_date}) 운용금액 수집 중... (100개 기관)")
+    records = []
+    for rank, (cik, inst, curr_amt) in enumerate(top100, 1):
+        prev_amt = fetch_prev_quarter_amount(session, cik, prev_report_date)
+        records.append((rank, cik, inst, prev_amt, curr_amt, report_date))
+        print(f"  [{rank:3d}/100] {inst[:40]:<40} prev={prev_amt:>15,}" if prev_amt else f"  [{rank:3d}/100] {inst[:40]:<40} prev=None")
+        time.sleep(0.2)
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                execute_values(
+                    cur,
+                    """
+                    INSERT INTO top100_institutions
+                        (rank, cik, institution, prev_amount_usd, curr_amount_usd, report_date)
+                    VALUES %s
+                    """,
+                    records,
+                )
+    finally:
+        conn.close()
+
+    print(f"top100_institutions 갱신 완료 ({len(records)}개 기관)")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -186,6 +289,8 @@ def main(year_arg: str, quarter_str: str) -> None:
 
     print(f"\n{year}년 {quarter}분기 전체 기관 13F 수집을 시작합니다.")
 
+    report_date = f"{year}-{QUARTER_END[quarter]}"
+    p_date      = prev_quarter_date(year, quarter)
     idx_year, idx_qtr = quarter_to_index_quarter(year, quarter)
     session = sec_session()
 
@@ -197,7 +302,7 @@ def main(year_arg: str, quarter_str: str) -> None:
     for i, (cik, accession) in enumerate(filings, 1):
         institution, amount = get_institution_data(session, cik, accession)
         if institution and amount is not None:
-            records.append((cik, institution, amount))
+            records.append((cik.zfill(10), institution, amount, report_date))
         else:
             skip_count += 1
 
@@ -208,7 +313,6 @@ def main(year_arg: str, quarter_str: str) -> None:
             )
 
         time.sleep(0.1)  # SEC 정책: 초당 10 요청 이내
-        
 
     print(f"\nDB 저장 중... ({len(records)}개 기관)")
     dup_count = save_institutions_to_db(records)
@@ -217,12 +321,13 @@ def main(year_arg: str, quarter_str: str) -> None:
         f"총 {len(records) - dup_count}개 기관 저장 / {skip_count}개 스킵 / 중복된 CIK {dup_count}개"
     )
 
+    build_top100_institutions(session, report_date, p_date)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
         print("Usage: python collect_institutions.py <year> <quarter>")
-        print("  예시: python collect_institutions.py 25 1  또는  python collect_institutions.py 2025 1")
+        print("  예시: python collect_institutions.py 25 4  또는  python collect_institutions.py 2025 4")
         sys.exit(1)
 
     main(sys.argv[1], sys.argv[2])
