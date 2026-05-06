@@ -5,7 +5,7 @@ import requests
 import psycopg2
 from psycopg2.extras import execute_values
 from xml.etree import ElementTree as ET
-from utils import DB_CONFIG, sec_session
+from utils import DB_CONFIG, sec_session, prev_quarter_date
 
 OPENFIGI_URL        = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_BATCH_FREE = 10   # API 키 없을 때 최대 10개
@@ -89,25 +89,37 @@ def fetch_top100_ciks(conn) -> list:
         return [row[0] for row in cur.fetchall()]
 
 
-def get_recent_13f_accessions(session: requests.Session, cik: str, count: int = 2) -> list:
-    """submissions JSON에서 최근 count개의 13F-HR (accession_number, report_date) 리스트를 반환합니다."""
+def fetch_target_dates(conn) -> tuple:
+    """top100_institutions.report_date를 현재 분기로, 직전 분기말을 계산해 반환한다."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT MAX(report_date) FROM top100_institutions")
+        curr_date = cur.fetchone()[0]
+    return curr_date, prev_quarter_date(curr_date)
+
+
+def get_13f_filings_for_dates(session: requests.Session, cik: str, target_dates: list) -> list:
+    """Submissions API에서 target_dates에 해당하는 13F-HR (accession, report_date) 목록을 반환한다."""
     url = f"https://data.sec.gov/submissions/CIK{str(cik).zfill(10)}.json"
     resp = session.get(url, timeout=60)
     resp.raise_for_status()
     recent = resp.json()["filings"]["recent"]
-    results = []
+
+    target_strs = {str(d) for d in target_dates}
+    found = {}
     for i, form in enumerate(recent["form"]):
         if form == "13F-HR":
-            results.append((recent["accessionNumber"][i], recent["reportDate"][i]))
-            if len(results) == count:
-                break
-    if not results:
-        raise ValueError(f"CIK {cik}: 13F-HR 없음")
-    return results
+            rd = recent["reportDate"][i]
+            if rd in target_strs and rd not in found:
+                found[rd] = recent["accessionNumber"][i]
+                if len(found) == len(target_strs):
+                    break
+    if not found:
+        raise ValueError(f"CIK {cik}: 대상 분기 13F-HR 없음")
+    return [(acc, rd) for rd, acc in found.items()]
 
 
-def get_infotable_filename(session: requests.Session, cik: str, accession: str) -> str:
-    """filing index.json에서 infotable XML 파일명을 반환합니다."""
+def get_infotable_filename(session: requests.Session, cik: str, accession: str) -> tuple:
+    """filing index.json에서 infotable XML 파일명과 value 단위 multiplier를 반환합니다."""
     acc_nodash = accession.replace("-", "")
     cik_int = int(cik)
     url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_nodash}/index.json"
@@ -116,24 +128,47 @@ def get_infotable_filename(session: requests.Session, cik: str, accession: str) 
 
     items = resp.json().get("directory", {}).get("item", [])
     # type이 "13F-HR TABLE"인 항목 우선
+    filename = None
     for item in items:
         if item.get("type", "") == "13F-HR TABLE":
-            return item["name"]
+            filename = item["name"]
+            break
     # 파일명에 "infotable" 포함 항목
-    for item in items:
-        if "infotable" in item["name"].lower():
-            return item["name"]
+    if not filename:
+        for item in items:
+            if "infotable" in item["name"].lower():
+                filename = item["name"]
+                break
     # primary_doc.xml이 아닌 유일한 .xml 파일 (커스텀 파일명 폴백)
-    xml_files = [
-        item["name"] for item in items
-        if item["name"].lower().endswith(".xml") and item["name"].lower() != "primary_doc.xml"
-    ]
-    if len(xml_files) == 1:
-        return xml_files[0]
-    raise ValueError(f"CIK {cik}: infotable 파일을 찾을 수 없음 — {[i['name'] for i in items]}")
+    if not filename:
+        xml_files = [
+            item["name"] for item in items
+            if item["name"].lower().endswith(".xml") and item["name"].lower() != "primary_doc.xml"
+        ]
+        if len(xml_files) == 1:
+            filename = xml_files[0]
+    if not filename:
+        raise ValueError(f"CIK {cik}: infotable 파일을 찾을 수 없음 — {[i['name'] for i in items]}")
+
+    # primary_doc.xml에서 schemaVersion 확인 → X0202는 달러 단위, 그 외는 천 달러 단위
+    multiplier = 1000
+    try:
+        pdoc_url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{acc_nodash}/primary_doc.xml"
+        pdoc_resp = session.get(pdoc_url, timeout=30)
+        pdoc_resp.raise_for_status()
+        pdoc_root = ET.fromstring(pdoc_resp.content)
+        for el in pdoc_root.iter():
+            if el.tag.split("}")[-1] == "schemaVersion" and el.text:
+                if el.text.strip() == "X0202":
+                    multiplier = 1
+                break
+    except Exception:
+        pass  # 실패 시 천 달러 단위(×1000)로 처리
+
+    return filename, multiplier
 
 
-def parse_infotable(session: requests.Session, cik: str, accession: str, filename: str) -> list:
+def parse_infotable(session: requests.Session, cik: str, accession: str, filename: str, multiplier: int = 1000) -> list:
     """infotable XML에서 보유 종목 목록을 반환합니다."""
     acc_nodash = accession.replace("-", "")
     cik_int = int(cik)
@@ -142,6 +177,7 @@ def parse_infotable(session: requests.Session, cik: str, accession: str, filenam
     resp.raise_for_status()
 
     root = ET.fromstring(resp.content)
+
     rows = []
 
     for info_table in root.iter():
@@ -163,7 +199,7 @@ def parse_infotable(session: requests.Session, cik: str, accession: str, filenam
                         shares = int(child.text.strip())
 
         if company_name and cusip and value_raw is not None:
-            rows.append((company_name, cusip, value_raw * 1000, shares))  # 13F value는 천 달러 단위
+            rows.append((company_name, cusip, value_raw * multiplier, shares))
 
     return rows
 
@@ -210,28 +246,31 @@ def save_holdings(conn, cik: str, accession: str, report_date: str, rows: list, 
 
 
 def main() -> None:
-    """상위 100개 기관의 최근 2개 분기 13F 보유 종목을 수집해 DB에 저장한다."""
+    """상위 100개 기관의 현재·직전 분기 13F 보유 종목을 수집해 DB에 저장한다."""
     session = sec_session()
     conn = psycopg2.connect(**DB_CONFIG)
 
     create_holdings_table(conn)
 
+    curr_date, prev_date = fetch_target_dates(conn)
+    print(f"\n현재 분기: {curr_date}  /  이전 분기: {prev_date}")
+
     ciks = fetch_top100_ciks(conn)
-    print(f"\n상위 {len(ciks)}개 기관 holdings 수집을 시작합니다.\n")
+    print(f"상위 {len(ciks)}개 기관 holdings 수집을 시작합니다.\n")
 
     cusip_cache: dict = {}  # 기관 간 CUSIP 캐시 (중복 API 요청 방지)
 
     for i, cik in enumerate(ciks, 1):
         try:
-            filings = get_recent_13f_accessions(session, cik)
+            filings = get_13f_filings_for_dates(session, cik, [curr_date, prev_date])
             time.sleep(0.2)
 
             for accession, report_date in filings:
                 try:
-                    filename = get_infotable_filename(session, cik, accession)
+                    filename, multiplier = get_infotable_filename(session, cik, accession)
                     time.sleep(0.2)
 
-                    rows = parse_infotable(session, cik, accession, filename)
+                    rows = parse_infotable(session, cik, accession, filename, multiplier)
                     time.sleep(0.2)
 
                     cusips     = list({cusip for _, cusip, _, _ in rows})

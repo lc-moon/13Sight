@@ -1,5 +1,6 @@
 """공통 유틸리티: 환경변수 로드, DB 설정, SEC HTTP 세션."""
 import os
+from datetime import date
 import requests
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
@@ -33,6 +34,15 @@ SEC_HEADERS = {
     "User-Agent": "NPS-13F-Tracker lcmoony1@gmail.com",
     "Accept-Encoding": "gzip, deflate",
 }
+
+
+def prev_quarter_date(d: date) -> date:
+    """분기말 날짜를 받아 직전 분기말 날짜를 반환한다."""
+    if d.month == 3:  return date(d.year - 1, 12, 31)
+    if d.month == 6:  return date(d.year, 3, 31)
+    if d.month == 9:  return date(d.year, 6, 30)
+    if d.month == 12: return date(d.year, 9, 30)
+    raise ValueError(f"분기말 날짜가 아님: {d}")
 
 
 def sec_session() -> requests.Session:

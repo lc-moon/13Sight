@@ -75,6 +75,7 @@ def fetch_holdings(cik: str, report_date=None) -> list:
                 SELECT company_name, cusip, ticker, value, shares, report_date
                 FROM holdings
                 WHERE cik = %s AND report_date = %s
+                  AND value > 0 AND cusip != '000000000'
                 ORDER BY value DESC
                 """,
                 (cik, report_date),
@@ -210,7 +211,7 @@ def index():
       <div class="dropdown" id="dropdown"></div>
     </div>
 
-    <button class="action-btn">상위 100개 기관 투자자들의 13F 포트폴리오 분석</button>
+    <a href="/consensus" class="action-btn">상위 100개 기관 투자자들의 13F 포트폴리오 분석</a>
 
     <div class="list-title">운용금액(AUM) 상위 100개 기관</div>
     <table>
@@ -300,6 +301,9 @@ def institution_detail(cik):
     latest_by_cusip = {row[1]: row for row in fetch_holdings(cik_raw, latest_date)}
     prev_by_cusip   = {row[1]: row for row in (fetch_holdings(cik_raw, prev_date) if prev_date else [])}
 
+    # prev 유효 데이터 없음 = CT(비공개처리) 또는 미수집 → 변화 비교 불가
+    no_prev = not prev_by_cusip
+
     tab = request.args.get("tab", "all")
     TAB_DEFS = [
         ("all",       "전체"),
@@ -319,9 +323,11 @@ def institution_detail(cik):
     # (row_to_display, prev_row_or_None, is_full_sell)
     if tab == "all":
         display = [
-            (row, prev_by_cusip.get(row[1]), False)
+            (row, None if no_prev else prev_by_cusip.get(row[1]), False)
             for row in sorted(latest_by_cusip.values(), key=lambda r: -(r[3] or 0))
         ]
+    elif no_prev:
+        display = []
     elif tab == "buy":
         display = sorted(
             [
@@ -368,6 +374,9 @@ def institution_detail(cik):
         if is_full_sell:
             val_html    = f'{_fmt_value(value)} <span style="color:blue">▼ -{_fmt_value(value)}</span>' if value else "-"
             shares_html = f'{_fmt_shares(shares)} <span style="color:blue">▼ -{_fmt_shares(shares)}</span>' if shares else "-"
+        elif no_prev:
+            val_html    = _fmt_value(value)
+            shares_html = _fmt_shares(shares)
         else:
             prev_value  = prev_row[3] if prev_row else None
             prev_shares = prev_row[4] if prev_row else None
@@ -412,6 +421,103 @@ def institution_detail(cik):
 </head>
 <body>
   <h2>CIK {cik_display} 보유 종목</h2>
+  <p><a href="/">← 목록으로</a></p>
+  <p>{tabs_html}</p>
+{body}
+</body>
+</html>"""
+
+
+def fetch_consensus(tab: str) -> list:
+    """consensus 테이블에서 탭에 맞는 순위 컬럼 기준으로 상위 100개를 반환한다."""
+    rank_col = {
+        "composite": "composite_rank",
+        "inst":      "inst_rank",
+        "buy":       "buy_rank",
+        "weight":    "weight_rank",
+    }.get(tab, "composite_rank")
+
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                f"""
+                SELECT composite_rank, inst_rank, buy_rank, weight_rank,
+                       ticker, company_name,
+                       composite_score, institution_count, total_buy_amount, total_weight_change
+                FROM consensus
+                WHERE {rank_col} IS NOT NULL
+                ORDER BY {rank_col} ASC
+                """
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
+@app.route("/consensus")
+def consensus():
+    """GET /consensus — top100 기관 공통 매수 종목 통합분석 페이지."""
+    tab = request.args.get("tab", "composite")
+    TAB_DEFS = [
+        ("composite", "종합 순위"),
+        ("inst",      "기관 수"),
+        ("buy",       "매수 금액"),
+        ("weight",    "포트폴리오 비중 변화"),
+    ]
+
+    tabs_html = ""
+    for key, label in TAB_DEFS:
+        if key == tab:
+            tabs_html += f'<strong style="margin-right:14px; border-bottom:2px solid #333; padding-bottom:2px">{label}</strong>'
+        else:
+            tabs_html += f'<a href="/consensus?tab={key}" style="margin-right:14px">{label}</a>'
+
+    rows = fetch_consensus(tab)
+    if not rows:
+        body = "<p>데이터 없음 — build_consensus.py를 먼저 실행하세요.</p>"
+    else:
+        if tab == "composite":
+            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>종합점수</th><th>기관수 순위</th><th>매수금액 순위</th><th>비중변화 순위</th></tr>"
+            table_rows = "".join(
+                f"<tr><td>{r[0]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td>"
+                f"<td>{r[6]:.1f}</td>"
+                f"<td>{r[1] if r[1] else '-'}</td><td>{r[2] if r[2] else '-'}</td><td>{r[3] if r[3] else '-'}</td></tr>"
+                for r in rows
+            )
+        elif tab == "inst":
+            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>매수 기관 수</th></tr>"
+            table_rows = "".join(
+                f"<tr><td>{r[1]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td><td>{r[7]}</td></tr>"
+                for r in rows
+            )
+        elif tab == "buy":
+            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>총 매수 금액</th></tr>"
+            table_rows = "".join(
+                f"<tr><td>{r[2]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td><td>{_fmt_value(r[8])}</td></tr>"
+                for r in rows
+            )
+        else:  # weight
+            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>비중 변화 합산</th></tr>"
+            table_rows = "".join(
+                f"<tr><td>{r[3]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td><td>{r[9]*100:.4f}%</td></tr>"
+                for r in rows
+            )
+
+        body = f"""
+  <table border="1" cellpadding="4" cellspacing="0" style="font-size:14px;border-collapse:collapse">
+    <thead>{header}</thead>
+    <tbody>{table_rows}</tbody>
+  </table>"""
+
+    return f"""<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <title>통합분석 - 13Sight</title>
+</head>
+<body>
+  <h2>통합분석</h2>
   <p><a href="/">← 목록으로</a></p>
   <p>{tabs_html}</p>
 {body}
