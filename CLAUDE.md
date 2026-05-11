@@ -41,7 +41,8 @@ OPENFIGI_API_KEY=   # 없으면 배치 10개/2.5초 제한, 있으면 100개/0.3
 |---|---|
 | `collect_institutions.py` | SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액(tableValueTotal)을 수집 → `all_institutions` 테이블 TRUNCATE+INSERT, 상위 100개를 `top100_institutions` 테이블에 rank 포함 저장 |
 | `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT |
-| `app.py` | Flask 웹 서버. `/`(검색+기관 목록), `/institution/<cik>`(5탭 비교 분석), `/api/search`(자동완성 JSON) |
+| `app.py` | Flask 웹 서버. `/`(검색+기관 목록), `/institution/<cik>`(5탭 비교 분석), `/consensus`(통합분석), `/api/search`(자동완성 JSON) |
+| `build_consensus.py` | top100 기관의 공통 매수 종목을 집계·점수화하여 `consensus` 테이블에 저장. 종합·기관수·매수금액·비중변화 4개 지표 산출. |
 | `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일)에 `collect_institutions.py` 자동 실행 |
 
 ## 페이지 구성 및 용어
@@ -50,6 +51,7 @@ OPENFIGI_API_KEY=   # 없으면 배치 10개/2.5초 제한, 있으면 100개/0.3
 |---|---|---|
 | 메인 페이지 | `/` | 검색창 + 운용금액 상위 100개 기관 목록 |
 | 상세 분석 페이지 | `/institution/<cik>` | 기관별 보유 종목 5탭 비교 분석 |
+| 통합분석 페이지 | `/consensus` | top100 기관 공통 매수 종목 4탭(종합·기관수·매수금액·비중변화) 순위 |
 
 ## DB 스키마
 
@@ -71,6 +73,25 @@ CREATE TABLE top100_institutions (
     prev_amount_usd BIGINT,
     curr_amount_usd BIGINT       NOT NULL,
     report_date     DATE
+);
+
+-- top100 기관 공통 매수 종목 집계 (build_consensus.py 실행 시 TRUNCATE 후 재삽입)
+CREATE TABLE consensus (
+    cusip                 VARCHAR(20)       NOT NULL,
+    ticker                VARCHAR(50),
+    company_name          VARCHAR(255),
+    report_date           DATE              NOT NULL,
+    institution_count     INT               NOT NULL DEFAULT 0,
+    inst_rank             SMALLINT,
+    inst_score            SMALLINT          NOT NULL DEFAULT 0,
+    total_buy_amount      BIGINT            NOT NULL DEFAULT 0,
+    buy_rank              SMALLINT,
+    buy_score             SMALLINT          NOT NULL DEFAULT 0,
+    total_weight_change   DOUBLE PRECISION  NOT NULL DEFAULT 0,
+    weight_rank           SMALLINT,
+    weight_score          SMALLINT          NOT NULL DEFAULT 0,
+    composite_score       DOUBLE PRECISION  NOT NULL DEFAULT 0,
+    composite_rank        SMALLINT
 );
 
 -- 기관별 보유 종목 (2개 분기)
@@ -100,3 +121,11 @@ CREATE TABLE holdings (
 **스키마 버전**: `primary_doc.xml`의 `tableValueTotal`은 X0202(2023년 1월 이후) 스키마에서 달러 단위, X0106 및 구버전에서 천 달러 단위(×1000). 단, T. Rowe Price(CIK 0000080255) 등 일부 기관이 X0202 스키마를 쓰면서 천달러 단위로 잘못 신고하는 filing 오류가 존재하며, 이 경우 실제 AUM이 1000배 작게 저장되는 한계가 있음.
 
 **CUSIP 합산**: 같은 종목이 SOLE/SHARED/NONE 재량 구분으로 여러 행일 수 있어 `save_holdings()`에서 CUSIP 기준으로 합산 후 저장.
+
+**consensus 집계 로직** (`build_consensus.py`): `curr_shares > prev_shares`인 기관만 매수로 판단하여 세 지표를 계산한다.
+- `total_buy_amount`: `round(curr_val * (curr_shares - prev_shares) / curr_shares)` — 신규 취득 주식의 현재 평가금액 합산 (가격 상승분 제외)
+- `total_weight_change`: `curr_val * (curr_shares - prev_shares) / curr_shares / curr_aum` — 신규 취득 주식이 현재 운용금액에서 차지하는 비중 합산 (기관 규모 중립 확신 지표)
+- `institution_count`: 매수 기관 수
+- 점수 공식: `100 * (1 - log(rank) / log(n+1))` 로그 스케일. 전체 활성 종목에 순위 부여 (컷오프 없음, 최하위도 0점 이상)
+- 종합점수: 기관수(50%) + 매수금액(30%) + 비중변화(20%) 가중합산
+- 각 탭 500위까지 표시

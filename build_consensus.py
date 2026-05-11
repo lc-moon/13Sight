@@ -1,4 +1,5 @@
 """top100 기관의 공통 매수 종목을 집계·점수화하여 consensus 테이블에 저장하는 전처리 스크립트."""
+import math
 import psycopg2
 from utils import DB_CONFIG, prev_quarter_date
 
@@ -35,16 +36,15 @@ def load_holdings(conn, report_date):
     return result
 
 
-def rank_desc(items, top_n=100):
-    """(key, value) 쌍을 value 내림차순으로 RANK() 방식 순위 부여. top_n 초과는 None."""
+def rank_desc(items):
+    """(key, value) 쌍을 value 내림차순으로 RANK() 방식 순위 부여."""
     sorted_items = sorted(items, key=lambda x: -x[1])
     ranks = {}
     for i, (key, val) in enumerate(sorted_items):
         if i > 0 and val == sorted_items[i - 1][1]:
-            rank = ranks[sorted_items[i - 1][0]]  # None일 수 있음
+            ranks[key] = ranks[sorted_items[i - 1][0]]
         else:
-            rank = i + 1
-        ranks[key] = rank if (rank is not None and rank <= top_n) else None
+            ranks[key] = i + 1
     return ranks
 
 
@@ -82,27 +82,30 @@ def build_consensus():
 
                 if curr_shares > prev_shares:  # 보유 주식 수 기준으로 매수 판단
                     inst_count[cusip] = inst_count.get(cusip, 0) + 1
-                    buy_amount[cusip] = buy_amount.get(cusip, 0) + curr_val - prev_val
-
-                if prev_aum:
-                    delta_w = curr_val / curr_aum - prev_val / prev_aum
-                    if delta_w > 0:
-                        weight_chg[cusip] = weight_chg.get(cusip, 0) + delta_w
+                    buy_amount[cusip] = buy_amount.get(cusip, 0) + round(curr_val * (curr_shares - prev_shares) / curr_shares)
+                    if curr_aum:
+                        weight_chg[cusip] = weight_chg.get(cusip, 0) + curr_val * (curr_shares - prev_shares) / curr_shares / curr_aum
 
         inst_ranks   = rank_desc(inst_count.items())
         buy_ranks    = rank_desc(buy_amount.items())
         weight_ranks = rank_desc(weight_chg.items())
 
+        n_inst   = len(inst_ranks)
+        n_buy    = len(buy_ranks)
+        n_weight = len(weight_ranks)
+
         active = set(inst_count) | set(weight_chg)
 
+        scores = {}
         composite = {}
         for cusip in active:
             ir = inst_ranks.get(cusip)
             br = buy_ranks.get(cusip)
             wr = weight_ranks.get(cusip)
-            i_s = (101 - ir) if ir is not None else 0
-            b_s = (101 - br) if br is not None else 0
-            w_s = (101 - wr) if wr is not None else 0
+            i_s = 100 * (1 - math.log(ir) / math.log(n_inst + 1)) if ir is not None else 0.0
+            b_s = 100 * (1 - math.log(br) / math.log(n_buy + 1)) if br is not None else 0.0
+            w_s = 100 * (1 - math.log(wr) / math.log(n_weight + 1)) if wr is not None else 0.0
+            scores[cusip] = (i_s, b_s, w_s)
             composite[cusip] = i_s * 0.5 + b_s * 0.3 + w_s * 0.2
 
         comp_ranks = rank_desc(composite.items())
@@ -114,14 +117,12 @@ def build_consensus():
             br = buy_ranks.get(cusip)
             wr = weight_ranks.get(cusip)
             cr = comp_ranks.get(cusip)
-            i_s = (101 - ir) if ir is not None else 0
-            b_s = (101 - br) if br is not None else 0
-            w_s = (101 - wr) if wr is not None else 0
+            i_s, b_s, w_s = scores[cusip]
             rows.append((
                 cusip, ticker, company_name, curr_date,
-                inst_count.get(cusip, 0), ir, i_s,
-                buy_amount.get(cusip, 0), br, b_s,
-                weight_chg.get(cusip, 0.0), wr, w_s,
+                inst_count.get(cusip, 0), ir, round(i_s),
+                buy_amount.get(cusip, 0), br, round(b_s),
+                weight_chg.get(cusip, 0.0), wr, round(w_s),
                 composite[cusip], cr,
             ))
 

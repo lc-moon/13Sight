@@ -429,7 +429,7 @@ def institution_detail(cik):
 
 
 def fetch_consensus(tab: str) -> list:
-    """consensus 테이블에서 탭에 맞는 순위 컬럼 기준으로 상위 100개를 반환한다."""
+    """consensus 테이블에서 탭에 맞는 순위 컬럼 기준으로 상위 500개를 반환한다."""
     rank_col = {
         "composite": "composite_rank",
         "inst":      "inst_rank",
@@ -448,6 +448,7 @@ def fetch_consensus(tab: str) -> list:
                 FROM consensus
                 WHERE {rank_col} IS NOT NULL
                 ORDER BY {rank_col} ASC
+                LIMIT 500
                 """
             )
             return cur.fetchall()
