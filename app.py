@@ -1,6 +1,6 @@
 """13F 보유 종목 검색 및 기관별 포트폴리오 비교 분석을 제공하는 Flask 웹 서버."""
 import psycopg2
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, render_template
 from utils import DB_CONFIG
 
 app = Flask(__name__)
@@ -149,133 +149,16 @@ def index():
     """GET / — 검색창과 운용금액 상위 100개 기관 목록을 렌더링한다."""
     rows = fetch_top100()
 
-    table_rows = ""
-    for rank, cik, institution, curr_amount_usd, prev_amount_usd in rows:
-        aum_html = change_html_value(curr_amount_usd, prev_amount_usd)
-        table_rows += (
-            f"<tr>"
-            f"<td>{rank}</td>"
-            f"<td>{cik}</td>"
-            f'<td><a href="/institution/{cik}">{institution}</a></td>'
-            f"<td>{aum_html}</td>"
-            f"</tr>\n"
-        )
-
-    return f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <title>13Sight</title>
-  <style>
-    * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: Arial, sans-serif; background: #fff; color: #202124; }}
-    .container {{ max-width: 620px; margin: 0 auto; padding: 60px 20px 60px; }}
-    .logo {{ text-align: center; font-size: 52px; font-weight: bold; color: #4285f4;
-             letter-spacing: -1px; margin-bottom: 28px; }}
-    .search-wrapper {{ position: relative; margin-bottom: 14px; }}
-    .search-input {{
-      width: 100%; border-radius: 24px; border: 1px solid #dfe1e5;
-      padding: 12px 20px; font-size: 16px; outline: none;
-    }}
-    .search-input:focus {{ border-color: #4285f4; box-shadow: 0 1px 6px rgba(32,33,36,.28); }}
-    .dropdown {{
-      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
-      background: #fff; border: 1px solid #dfe1e5; border-radius: 8px;
-      box-shadow: 0 4px 6px rgba(0,0,0,.1); z-index: 100; overflow: hidden;
-    }}
-    .dropdown-item {{ padding: 10px 20px; cursor: pointer; font-size: 15px; }}
-    .dropdown-item:hover {{ background: #f8f9fa; }}
-    .dropdown-no-result {{ padding: 10px 20px; font-size: 15px; color: #d93025; }}
-    .search-input.error {{ border-color: #d93025 !important; box-shadow: 0 1px 6px rgba(217,48,37,.28) !important; }}
-    .action-btn {{
-      display: block; width: 100%; padding: 12px; border-radius: 24px;
-      background: #f8f9fa; border: 1px solid #dfe1e5; font-size: 15px;
-      cursor: default; text-align: center; margin-bottom: 36px;
-    }}
-    .list-title {{ font-size: 15px; color: #5f6368; margin-bottom: 8px; }}
-    table {{ width: 100%; border-collapse: collapse; font-size: 14px; }}
-    th, td {{ border: 1px solid #dfe1e5; padding: 8px 10px; text-align: left; }}
-    th {{ background: #f8f9fa; }}
-    tr:hover td {{ background: #f8f9fa; }}
-    a {{ color: #1a0dab; text-decoration: none; }}
-    a:hover {{ text-decoration: underline; }}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="logo">13Sight</div>
-
-    <div class="search-wrapper">
-      <input type="text" class="search-input" id="searchInput"
-             placeholder="기관명 또는 CIK 검색" autocomplete="off">
-      <div class="dropdown" id="dropdown"></div>
-    </div>
-
-    <a href="/consensus" class="action-btn">상위 100개 기관 투자자들의 13F 포트폴리오 분석</a>
-
-    <div class="list-title">운용금액(AUM) 상위 100개 기관</div>
-    <table>
-      <thead>
-        <tr><th>순위</th><th>CIK</th><th>기관명</th><th>운용금액 (AUM)</th></tr>
-      </thead>
-      <tbody>
-{table_rows}      </tbody>
-    </table>
-  </div>
-
-  <script>
-    const input    = document.getElementById('searchInput');
-    const dropdown = document.getElementById('dropdown');
-    let timer;
-
-    function resetError() {{
-      input.classList.remove('error');
-      dropdown.style.display = 'none';
-      dropdown.innerHTML = '';
-    }}
-
-    input.addEventListener('input', () => {{
-      input.classList.remove('error');
-      clearTimeout(timer);
-      timer = setTimeout(() => {{
-        const q = input.value.trim();
-        if (!q) {{ resetError(); return; }}
-        fetch('/api/search?q=' + encodeURIComponent(q))
-          .then(r => r.json())
-          .then(results => {{
-            if (!results.length) {{ resetError(); return; }}
-            dropdown.innerHTML = results
-              .map(r => `<div class="dropdown-item" data-cik="${{r.cik}}">${{r.institution}}</div>`)
-              .join('');
-            dropdown.style.display = 'block';
-          }});
-      }}, 300);
-    }});
-
-    dropdown.addEventListener('click', e => {{
-      const item = e.target.closest('.dropdown-item');
-      if (item) location.href = '/institution/' + item.dataset.cik;
-    }});
-
-    input.addEventListener('keydown', e => {{
-      if (e.key === 'Enter') {{
-        const first = dropdown.querySelector('.dropdown-item');
-        if (first) {{
-          location.href = '/institution/' + first.dataset.cik;
-        }} else if (input.value.trim()) {{
-          dropdown.innerHTML = '<div class="dropdown-no-result">존재하지 않는 기관 명입니다.</div>';
-          dropdown.style.display = 'block';
-          input.classList.add('error');
-        }}
-      }}
-    }});
-
-    document.addEventListener('click', e => {{
-      if (!e.target.closest('.search-wrapper')) resetError();
-    }});
-  </script>
-</body>
-</html>"""
+    table_data = [
+        {
+            'rank': rank,
+            'cik': cik,
+            'institution': institution,
+            'aum_html': change_html_value(curr_amount_usd, prev_amount_usd),
+        }
+        for rank, cik, institution, curr_amount_usd, prev_amount_usd in rows
+    ]
+    return render_template('index.html', rows=table_data)
 
 
 @app.route("/institution/<cik>")
@@ -286,13 +169,9 @@ def institution_detail(cik):
 
     dates = fetch_report_dates(cik_raw)
     if not dates:
-        return f"""<!DOCTYPE html>
-<html lang="ko"><head><meta charset="UTF-8"><title>보유 종목 - CIK {cik_display}</title></head>
-<body>
-  <h2>CIK {cik_display} 보유 종목</h2>
-  <p><a href="/">← 목록으로</a></p>
-  <p>데이터 없음 — collect_holdings.py를 먼저 실행해 holdings 데이터를 수집하세요.</p>
-</body></html>"""
+        return render_template('institution.html',
+            cik_display=cik_display, has_dates=False,
+            tabs=[], display_rows=[], latest_label='', prev_label='')
 
     latest_date = dates[0]
     prev_date   = dates[1] if len(dates) > 1 else None
@@ -312,13 +191,6 @@ def institution_detail(cik):
         ("new_buy",   "신규 매수"),
         ("full_sell", "전량 매도"),
     ]
-
-    tabs_html = ""
-    for key, label in TAB_DEFS:
-        if key == tab:
-            tabs_html += f'<strong style="margin-right:14px; border-bottom:2px solid #333; padding-bottom:2px">{label}</strong>'
-        else:
-            tabs_html += f'<a href="/institution/{cik_display}?tab={key}" style="margin-right:14px">{label}</a>'
 
     # (row_to_display, prev_row_or_None, is_full_sell)
     if tab == "all":
@@ -368,7 +240,7 @@ def institution_detail(cik):
     else:
         display = []
 
-    table_rows = ""
+    display_rows = []
     for rank, (row, prev_row, is_full_sell) in enumerate(display, 1):
         company_name, cusip, ticker, value, shares, _ = row
         if is_full_sell:
@@ -382,50 +254,25 @@ def institution_detail(cik):
             prev_shares = prev_row[4] if prev_row else None
             val_html    = change_html_value(value, prev_value)
             shares_html = change_html_shares(shares, prev_shares)
+        display_rows.append({
+            'rank': rank,
+            'company_name': company_name,
+            'cusip': cusip,
+            'ticker': ticker or '-',
+            'val_html': val_html,
+            'shares_html': shares_html,
+        })
 
-        table_rows += (
-            f"<tr>"
-            f"<td>{rank}</td>"
-            f"<td>{company_name}</td>"
-            f"<td>{cusip}</td>"
-            f"<td>{ticker or '-'}</td>"
-            f"<td>{val_html}</td>"
-            f"<td>{shares_html}</td>"
-            f"</tr>\n"
-        )
+    tabs = [{'key': k, 'label': l, 'active': k == tab} for k, l in TAB_DEFS]
 
-    latest_label = quarter_label(latest_date)
-    prev_label   = quarter_label(prev_date) if prev_date else "없음"
-
-    if display:
-        body = f"""
-  <p style="color:#666;font-size:0.9em">기준 분기: {latest_label} &nbsp;|&nbsp; 비교 분기: {prev_label}</p>
-  <table border="1" cellpadding="4" cellspacing="0">
-    <thead>
-      <tr>
-        <th>순위</th><th>종목명</th><th>CUSIP</th><th>티커</th>
-        <th>평가금액</th><th>보유수량</th>
-      </tr>
-    </thead>
-    <tbody>
-{table_rows}    </tbody>
-  </table>"""
-    else:
-        body = "<p>해당 조건의 종목이 없습니다.</p>"
-
-    return f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <title>보유 종목 - CIK {cik_display}</title>
-</head>
-<body>
-  <h2>CIK {cik_display} 보유 종목</h2>
-  <p><a href="/">← 목록으로</a></p>
-  <p>{tabs_html}</p>
-{body}
-</body>
-</html>"""
+    return render_template('institution.html',
+        cik_display=cik_display,
+        has_dates=True,
+        tabs=tabs,
+        display_rows=display_rows,
+        latest_label=quarter_label(latest_date),
+        prev_label=quarter_label(prev_date) if prev_date else "없음",
+    )
 
 
 def fetch_consensus(tab: str) -> list:
@@ -467,63 +314,34 @@ def consensus():
         ("weight",    "포트폴리오 비중 변화"),
     ]
 
-    tabs_html = ""
-    for key, label in TAB_DEFS:
-        if key == tab:
-            tabs_html += f'<strong style="margin-right:14px; border-bottom:2px solid #333; padding-bottom:2px">{label}</strong>'
-        else:
-            tabs_html += f'<a href="/consensus?tab={key}" style="margin-right:14px">{label}</a>'
+    db_rows = fetch_consensus(tab)
 
-    rows = fetch_consensus(tab)
-    if not rows:
-        body = "<p>데이터 없음 — build_consensus.py를 먼저 실행하세요.</p>"
-    else:
+    consensus_rows = []
+    for r in db_rows:
+        row = {'ticker': r[4] or '-', 'company_name': r[5]}
         if tab == "composite":
-            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>종합점수</th><th>기관수 순위</th><th>매수금액 순위</th><th>비중변화 순위</th></tr>"
-            table_rows = "".join(
-                f"<tr><td>{r[0]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td>"
-                f"<td>{r[6]:.1f}</td>"
-                f"<td>{r[1] if r[1] else '-'}</td><td>{r[2] if r[2] else '-'}</td><td>{r[3] if r[3] else '-'}</td></tr>"
-                for r in rows
-            )
+            row.update({
+                'rank': r[0],
+                'composite_score': f"{r[6]:.1f}",
+                'inst_rank':   r[1] if r[1] else '-',
+                'buy_rank':    r[2] if r[2] else '-',
+                'weight_rank': r[3] if r[3] else '-',
+            })
         elif tab == "inst":
-            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>매수 기관 수</th></tr>"
-            table_rows = "".join(
-                f"<tr><td>{r[1]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td><td>{r[7]}</td></tr>"
-                for r in rows
-            )
+            row.update({'rank': r[1], 'value': str(r[7])})
         elif tab == "buy":
-            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>총 매수 금액</th></tr>"
-            table_rows = "".join(
-                f"<tr><td>{r[2]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td><td>{_fmt_value(r[8])}</td></tr>"
-                for r in rows
-            )
-        else:  # weight
-            header = "<tr><th>순위</th><th>티커</th><th>종목명</th><th>비중 변화 합산</th></tr>"
-            table_rows = "".join(
-                f"<tr><td>{r[3]}</td><td>{r[4] or '-'}</td><td>{r[5]}</td><td>{r[9]*100:.4f}%</td></tr>"
-                for r in rows
-            )
+            row.update({'rank': r[2], 'value': _fmt_value(r[8])})
+        else:
+            row.update({'rank': r[3], 'value': f"{r[9]*100:.4f}%"})
+        consensus_rows.append(row)
 
-        body = f"""
-  <table border="1" cellpadding="4" cellspacing="0" style="font-size:14px;border-collapse:collapse">
-    <thead>{header}</thead>
-    <tbody>{table_rows}</tbody>
-  </table>"""
+    tabs = [{'key': k, 'label': l, 'active': k == tab} for k, l in TAB_DEFS]
 
-    return f"""<!DOCTYPE html>
-<html lang="ko">
-<head>
-  <meta charset="UTF-8">
-  <title>통합분석 - 13Sight</title>
-</head>
-<body>
-  <h2>통합분석</h2>
-  <p><a href="/">← 목록으로</a></p>
-  <p>{tabs_html}</p>
-{body}
-</body>
-</html>"""
+    return render_template('consensus.html',
+        tab=tab,
+        tabs=tabs,
+        rows=consensus_rows,
+    )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,103 @@
+{% extends "base.html" %}
+{% block title %}13Sight{% endblock %}
+
+{% block content %}
+<main class="container">
+  <section class="hero">
+    <h1 class="hero-logo">13Sight</h1>
+    <div class="search-wrapper">
+      <input type="text" class="search-input" id="searchInput"
+             placeholder="기관명 또는 CIK 검색" autocomplete="off">
+      <div class="dropdown" id="dropdown"></div>
+    </div>
+    <a href="/consensus" class="cta-card">
+      <div class="cta-text">
+        <div class="cta-title">통합분석</div>
+        <div class="cta-desc">상위 100개 기관 투자자들의 13F 포트폴리오 분석</div>
+      </div>
+      <span class="cta-arrow">→</span>
+    </a>
+  </section>
+
+  <section class="section">
+    <div class="section-head">
+      <div class="section-title">운용금액(AUM) 상위 100개 기관</div>
+      <div class="section-meta">전분기 대비 변동</div>
+    </div>
+    <div class="table-scroll">
+      <table class="data">
+        <thead>
+          <tr>
+            <th style="width:60px">순위</th>
+            <th style="width:110px">CIK</th>
+            <th>기관명</th>
+            <th class="num">운용금액 (AUM)</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td class="rank">{{ row.rank }}</td>
+            <td class="mono">{{ row.cik }}</td>
+            <td class="primary"><a href="/institution/{{ row.cik }}">{{ row.institution }}</a></td>
+            <td class="num">{{ row.aum_html | safe }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</main>
+
+<script>
+  const input    = document.getElementById('searchInput');
+  const dropdown = document.getElementById('dropdown');
+  let timer;
+
+  function resetError() {
+    input.classList.remove('error');
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+  }
+
+  input.addEventListener('input', () => {
+    input.classList.remove('error');
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      const q = input.value.trim();
+      if (!q) { resetError(); return; }
+      fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(r => r.json())
+        .then(results => {
+          if (!results.length) { resetError(); return; }
+          dropdown.innerHTML = results
+            .map(r => `<div class="dropdown-item" data-cik="${r.cik}">${r.institution}</div>`)
+            .join('');
+          dropdown.style.display = 'block';
+        });
+    }, 300);
+  });
+
+  dropdown.addEventListener('click', e => {
+    const item = e.target.closest('.dropdown-item');
+    if (item) location.href = '/institution/' + item.dataset.cik;
+  });
+
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+      const first = dropdown.querySelector('.dropdown-item');
+      if (first) {
+        location.href = '/institution/' + first.dataset.cik;
+      } else if (input.value.trim()) {
+        dropdown.innerHTML = '<div class="dropdown-no-result">존재하지 않는 기관 명입니다.</div>';
+        dropdown.style.display = 'block';
+        input.classList.add('error');
+      }
+    }
+  });
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('.search-wrapper')) resetError();
+  });
+</script>
+{% endblock %}

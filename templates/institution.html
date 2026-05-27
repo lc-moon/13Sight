@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}보유 종목 - CIK {{ cik_display }} · 13Sight{% endblock %}
+
+{% block content %}
+<main class="container tight">
+  <div class="breadcrumb"><a href="/">← 목록으로</a></div>
+  <header class="page-head">
+    <h1 class="page-title">보유 종목</h1>
+    <div class="page-subtitle mono">CIK {{ cik_display }}</div>
+  </header>
+
+  {% if not has_dates %}
+  <p style="color: var(--muted)">데이터 없음 — collect_holdings.py를 먼저 실행해 holdings 데이터를 수집하세요.</p>
+  {% else %}
+  <nav class="tabs">
+    {% for t in tabs %}
+      {% if t.active %}
+      <span class="tab active">{{ t.label }}</span>
+      {% else %}
+      <a class="tab" href="/institution/{{ cik_display }}?tab={{ t.key }}">{{ t.label }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+
+  {% if display_rows %}
+  <div class="meta-row">
+    <span class="meta-pill is-base">
+      <span class="meta-dot"></span>
+      <span class="meta-label">기준 분기</span>
+      <span class="meta-value">{{ latest_label }}</span>
+    </span>
+    <span class="meta-pill is-prev">
+      <span class="meta-dot"></span>
+      <span class="meta-label">비교 분기</span>
+      <span class="meta-value">{{ prev_label }}</span>
+    </span>
+  </div>
+  <div class="table-scroll">
+    <table class="data">
+      <thead>
+        <tr>
+          <th style="width:60px">순위</th>
+          <th>종목명</th>
+          <th style="width:120px">CUSIP</th>
+          <th style="width:100px">티커</th>
+          <th class="num">평가금액</th>
+          <th class="num">보유수량</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in display_rows %}
+        <tr>
+          <td class="rank">{{ row.rank }}</td>
+          <td class="primary">{{ row.company_name }}</td>
+          <td class="mono">{{ row.cusip }}</td>
+          <td><span class="ticker">{{ row.ticker }}</span></td>
+          <td class="num">{{ row.val_html | safe }}</td>
+          <td class="num">{{ row.shares_html | safe }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p style="color: var(--muted)">해당 조건의 종목이 없습니다.</p>
+  {% endif %}
+  {% endif %}
+</main>
+{% endblock %}

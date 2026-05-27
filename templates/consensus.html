@@ -1,0 +1,90 @@
+{% extends "base.html" %}
+{% block title %}통합분석 · 13Sight{% endblock %}
+{% block nav_consensus %}class="active"{% endblock %}
+
+{% block content %}
+<main class="container tight">
+  <div class="breadcrumb"><a href="/">← 목록으로</a></div>
+  <header class="page-head">
+    <h1 class="page-title">통합분석</h1>
+    <div class="page-subtitle">상위 100개 기관 투자자들이 공통으로 매수한 종목 순위</div>
+  </header>
+
+  <nav class="tabs">
+    {% for t in tabs %}
+      {% if t.active %}
+      <span class="tab active">{{ t.label }}</span>
+      {% else %}
+      <a class="tab" href="/consensus?tab={{ t.key }}">{{ t.label }}</a>
+      {% endif %}
+    {% endfor %}
+  </nav>
+
+  {% if not rows %}
+  <p style="color: var(--muted)">데이터 없음 — build_consensus.py를 먼저 실행하세요.</p>
+  {% else %}
+  <div class="table-scroll">
+    <table class="data">
+      <thead>
+        {% if tab == "composite" %}
+        <tr>
+          <th style="width:60px">순위</th>
+          <th style="width:96px">티커</th>
+          <th>종목명</th>
+          <th class="num" style="width:180px">종합점수</th>
+          <th class="num" style="width:110px">기관수 순위</th>
+          <th class="num" style="width:120px">매수금액 순위</th>
+          <th class="num" style="width:120px">비중변화 순위</th>
+        </tr>
+        {% elif tab == "inst" %}
+        <tr>
+          <th style="width:60px">순위</th>
+          <th style="width:96px">티커</th>
+          <th>종목명</th>
+          <th class="num">매수 기관 수</th>
+        </tr>
+        {% elif tab == "buy" %}
+        <tr>
+          <th style="width:60px">순위</th>
+          <th style="width:96px">티커</th>
+          <th>종목명</th>
+          <th class="num">총 매수 금액</th>
+        </tr>
+        {% else %}
+        <tr>
+          <th style="width:60px">순위</th>
+          <th style="width:96px">티커</th>
+          <th>종목명</th>
+          <th class="num">비중 변화 합산</th>
+        </tr>
+        {% endif %}
+      </thead>
+      <tbody>
+        {% for row in rows %}
+        <tr>
+          <td class="rank">{{ row.rank }}</td>
+          <td><span class="ticker">{{ row.ticker }}</span></td>
+          <td class="primary">{{ row.company_name }}</td>
+          {% if tab == "composite" %}
+          <td class="num">
+            <div class="score-cell">
+              <div class="score-bar">
+                <div class="score-fill" style="width: {{ row.composite_score }}%"></div>
+              </div>
+              <span class="score-value">{{ row.composite_score }}</span>
+            </div>
+          </td>
+          <td class="num sub">{{ row.inst_rank }}</td>
+          <td class="num sub">{{ row.buy_rank }}</td>
+          <td class="num sub">{{ row.weight_rank }}</td>
+          {% else %}
+          <td class="num">{{ row.value }}</td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</main>
+{% endblock %}

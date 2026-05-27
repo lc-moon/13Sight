@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}13Sight{% endblock %}</title>
+  <style>
+    /* ============ Design tokens ============ */
+    :root {
+      --bg: #ffffff;
+      --surface: #fafafa;
+      --fg: #111827;
+      --fg-soft: #374151;
+      --muted: #6b7280;
+      --muted-2: #9ca3af;
+      --border: #e5e7eb;
+      --border-strong: #d1d5db;
+      --hover: #f6f8fb;
+      --accent: #1a73e8;
+      --accent-soft: #e8f0fe;
+      --up: #d23f3f;
+      --down: #1e58c8;
+      --radius: 10px;
+      --radius-sm: 6px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Pretendard",
+                   "Apple SD Gothic Neo", "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+      background: #f3f5f7;
+      color: var(--fg);
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    /* change_html_* 인라인 스타일 오버라이드 */
+    span[style*="color:red"] {
+      color: var(--up) !important;
+      font-weight: 500;
+      font-size: 12px;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+    span[style*="color:blue"] {
+      color: var(--down) !important;
+      font-weight: 500;
+      font-size: 12px;
+      margin-left: 6px;
+      white-space: nowrap;
+    }
+
+    /* ============ Site header ============ */
+    .site-header { border-bottom: 1px solid var(--border); background: #fff; }
+    .site-header-inner {
+      max-width: 1120px; margin: 0 auto;
+      padding: 14px 24px;
+      display: flex; align-items: center; gap: 20px;
+    }
+    .brand {
+      font-size: 18px; font-weight: 700; letter-spacing: -0.4px;
+      color: var(--accent); text-decoration: none;
+    }
+    .brand:hover { text-decoration: none; }
+    .site-nav { margin-left: auto; display: flex; gap: 2px; }
+    .site-nav a {
+      padding: 7px 12px; border-radius: var(--radius-sm);
+      color: var(--muted); font-size: 13px; font-weight: 500;
+    }
+    .site-nav a:hover { background: var(--hover); color: var(--fg); text-decoration: none; }
+    .site-nav a.active { color: var(--fg); background: var(--hover); }
+
+    /* ============ Container ============ */
+    .container { max-width: 1120px; margin: 0 auto; padding: 40px 24px 64px; }
+    .container.tight { padding-top: 32px; }
+
+    /* ============ Index hero ============ */
+    .hero { max-width: 640px; margin: 24px auto 40px; text-align: center; }
+    .hero-logo {
+      font-size: 56px; font-weight: 700;
+      color: var(--accent); letter-spacing: -1.5px;
+      margin: 0 0 28px;
+    }
+    .search-wrapper { position: relative; }
+    .search-input {
+      width: 100%; border: 1px solid var(--border-strong);
+      border-radius: 24px; padding: 13px 22px;
+      font-size: 15px; outline: none;
+      font-family: inherit;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .search-input::placeholder { color: var(--muted-2); }
+    .search-input:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 4px rgba(26,115,232,.12);
+    }
+    .search-input.error {
+      border-color: var(--up) !important;
+      box-shadow: 0 0 0 4px rgba(210,63,63,.12) !important;
+    }
+    .dropdown {
+      display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0;
+      background: #fff; border: 1px solid var(--border);
+      border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,.1);
+      z-index: 100; overflow: hidden;
+    }
+    .dropdown-item { padding: 10px 20px; cursor: pointer; font-size: 15px; }
+    .dropdown-item:hover { background: var(--hover); }
+    .dropdown-no-result { padding: 10px 20px; font-size: 15px; color: var(--up); }
+
+    .cta-card {
+      display: flex; align-items: center; gap: 16px;
+      max-width: 640px; margin: 20px auto 0;
+      padding: 14px 20px;
+      background: #fff;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--fg);
+      transition: border-color .15s, box-shadow .15s;
+    }
+    .cta-card:hover {
+      border-color: var(--accent);
+      box-shadow: 0 4px 12px rgba(26,115,232,.10);
+      text-decoration: none;
+    }
+    .cta-card .cta-text { flex: 1; }
+    .cta-card .cta-title { font-size: 14px; font-weight: 600; color: var(--fg); margin-bottom: 1px; }
+    .cta-card .cta-desc { font-size: 13px; color: var(--muted); }
+    .cta-card .cta-arrow { color: var(--accent); font-size: 18px; font-weight: 500; transition: transform .15s; }
+    .cta-card:hover .cta-arrow { transform: translateX(3px); }
+
+    /* ============ Section heading ============ */
+    .section { margin-top: 56px; }
+    .section-head {
+      display: flex; align-items: baseline; justify-content: space-between;
+      margin-bottom: 14px; padding: 0 2px;
+    }
+    .section-title { font-size: 14px; font-weight: 600; color: var(--fg); letter-spacing: -0.1px; }
+    .section-meta { font-size: 12px; color: var(--muted); }
+
+    /* ============ Page head ============ */
+    .breadcrumb { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+    .breadcrumb a { color: var(--muted); }
+    .breadcrumb a:hover { color: var(--accent); }
+    .page-head { margin-bottom: 24px; }
+    .page-title { margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.4px; color: var(--fg); }
+    .page-subtitle { margin: 4px 0 0; font-size: 13px; color: var(--muted); }
+    .page-subtitle.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+    /* ============ Meta pills ============ */
+    .meta-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px; }
+    .meta-pill {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 6px 12px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: 999px; font-size: 12px;
+    }
+    .meta-pill .meta-label { color: var(--muted); }
+    .meta-pill .meta-value { color: var(--fg); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .meta-pill.is-base .meta-dot { background: var(--accent); }
+    .meta-pill.is-prev .meta-dot { background: var(--muted-2); }
+    .meta-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; }
+
+    /* ============ Tabs ============ */
+    .tabs {
+      display: flex; gap: 2px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 24px;
+      overflow-x: auto; scrollbar-width: none;
+    }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 11px 16px;
+      font-size: 14px; font-weight: 500;
+      color: var(--muted);
+      border-bottom: 2px solid transparent;
+      margin-bottom: -1px;
+      white-space: nowrap;
+      cursor: pointer;
+      transition: color .15s, border-color .15s, background .15s;
+      border-radius: 6px 6px 0 0;
+      text-decoration: none;
+    }
+    .tab:hover { color: var(--fg); text-decoration: none; background: var(--hover); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
+
+    /* ============ Table ============ */
+    .table-scroll {
+      overflow-x: auto; -webkit-overflow-scrolling: touch;
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: #fff;
+    }
+    table.data { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+    table.data thead th {
+      background: var(--surface);
+      font-size: 11px; font-weight: 600; color: var(--muted);
+      text-transform: uppercase; letter-spacing: 0.06em;
+      padding: 11px 16px; text-align: left;
+      border-bottom: 1px solid var(--border); white-space: nowrap;
+    }
+    table.data thead th.num { text-align: right; }
+    table.data tbody td { padding: 13px 16px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+    table.data tbody tr:last-child td { border-bottom: none; }
+    table.data tbody tr:hover td { background: var(--hover); }
+    table.data tbody td.num { text-align: right; white-space: nowrap; }
+    table.data td.rank { color: var(--muted); width: 56px; }
+    table.data td.mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; font-size: 13px; color: var(--muted); }
+    table.data td.primary { color: var(--fg); font-weight: 500; max-width: 360px; }
+    table.data td.primary a { color: var(--fg); }
+    table.data td.primary a:hover { color: var(--accent); text-decoration: underline; }
+    table.data td.sub { color: var(--muted); font-size: 13px; }
+
+    .ticker {
+      display: inline-block; padding: 2px 7px;
+      background: #f3f4f6; border-radius: 4px;
+      font-family: ui-monospace, "SF Mono", Menlo, monospace;
+      font-size: 12px; font-weight: 600;
+      color: var(--fg-soft); letter-spacing: 0.02em;
+    }
+
+    /* ============ Consensus score bar ============ */
+    .score-cell { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
+    .score-bar { flex: 0 0 80px; height: 6px; background: #eef2f7; border-radius: 999px; overflow: hidden; }
+    .score-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #4f9cf9); border-radius: 999px; }
+    .score-value { font-variant-numeric: tabular-nums; font-weight: 600; color: var(--fg); min-width: 38px; text-align: right; }
+
+    /* ============ Mobile ============ */
+    @media (max-width: 640px) {
+      .container { padding: 24px 16px 60px; }
+      .site-header-inner { padding: 12px 16px; }
+      .page-title { font-size: 20px; }
+      .hero-logo { font-size: 44px; }
+      table.data thead th, table.data tbody td { padding: 11px 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="site-header">
+    <div class="site-header-inner">
+      <a href="/" class="brand">13Sight</a>
+      <nav class="site-nav">
+        <a href="/consensus" {% block nav_consensus %}{% endblock %}>통합분석</a>
+      </nav>
+    </div>
+  </header>
+  {% block content %}{% endblock %}
+</body>
+</html>
