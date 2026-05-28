@@ -30,7 +30,7 @@ DB_CONFIG = {
     "password": os.environ.get("DB_PASSWORD", ""),
 }
 
-SEC_HEADERS = {
+_SEC_HEADERS = {
     "User-Agent": "NPS-13F-Tracker lcmoony1@gmail.com",
     "Accept-Encoding": "gzip, deflate",
 }
@@ -50,5 +50,5 @@ def sec_session() -> requests.Session:
     session = requests.Session()
     retry = Retry(total=3, backoff_factor=2, status_forcelist=[429, 500, 502, 503, 504])
     session.mount("https://", HTTPAdapter(max_retries=retry))
-    session.headers.update(SEC_HEADERS)
+    session.headers.update(_SEC_HEADERS)
     return session

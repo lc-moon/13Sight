@@ -4,9 +4,10 @@ import re
 import time
 import requests
 import psycopg2
+from datetime import date
 from psycopg2.extras import execute_values
 from xml.etree import ElementTree as ET
-from utils import DB_CONFIG, sec_session
+from utils import DB_CONFIG, sec_session, prev_quarter_date
 
 # 분기말 날짜 (report_date 계산용)
 QUARTER_END = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
@@ -36,13 +37,6 @@ def quarter_to_index_quarter(year: int, quarter: int) -> tuple:
     """사용자 분기를 SEC 인덱스 파일의 연도·쿼터로 변환합니다."""
     year_offset, idx_qtr = QUARTER_TO_INDEX[quarter]
     return year + year_offset, idx_qtr
-
-
-def prev_quarter_date(year: int, quarter: int) -> str:
-    """해당 분기의 직전 분기 report_date 문자열(YYYY-MM-DD)을 반환합니다."""
-    if quarter == 1:
-        return f"{year - 1}-{QUARTER_END[4]}"
-    return f"{year}-{QUARTER_END[quarter - 1]}"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -290,7 +284,7 @@ def main(year_arg: str, quarter_str: str) -> None:
     print(f"\n{year}년 {quarter}분기 전체 기관 13F 수집을 시작합니다.")
 
     report_date = f"{year}-{QUARTER_END[quarter]}"
-    p_date      = prev_quarter_date(year, quarter)
+    p_date      = str(prev_quarter_date(date.fromisoformat(report_date)))
     idx_year, idx_qtr = quarter_to_index_quarter(year, quarter)
     session = sec_session()
 
