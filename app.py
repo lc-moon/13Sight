@@ -1,7 +1,7 @@
 """13F 보유 종목 검색 및 기관별 포트폴리오 비교 분석을 제공하는 Flask 웹 서버."""
 import psycopg2
 from flask import Flask, request, jsonify, render_template
-from utils import DB_CONFIG
+from utils import DB_CONFIG, prev_quarter_date
 
 app = Flask(__name__)
 
@@ -290,7 +290,7 @@ def fetch_consensus(tab: str) -> list:
             cur.execute(
                 f"""
                 SELECT composite_rank, inst_rank, buy_rank, weight_rank,
-                       ticker, company_name,
+                       ticker, company_name, cusip,
                        composite_score, institution_count, total_buy_amount, total_weight_change
                 FROM consensus
                 WHERE {rank_col} IS NOT NULL
@@ -301,6 +301,76 @@ def fetch_consensus(tab: str) -> list:
             return cur.fetchall()
     finally:
         conn.close()
+
+
+def fetch_consensus_detail(cusip: str, tab: str) -> list:
+    """특정 CUSIP에 대해 탭별 매수 기관 상세 정보를 반환한다. build_consensus.py와 동일한 매수 판정 로직 사용."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT report_date FROM consensus WHERE cusip = %s LIMIT 1", (cusip,))
+            row = cur.fetchone()
+            if not row:
+                return []
+            curr_date = row[0]
+            p_date = prev_quarter_date(curr_date)
+
+            cur.execute(
+                """
+                SELECT t.institution, t.cik, t.curr_amount_usd,
+                       hc.value, hc.shares,
+                       COALESCE(hp.shares, 0)
+                FROM top100_institutions t
+                JOIN holdings hc ON hc.cik = t.cik
+                                 AND hc.cusip = %s
+                                 AND hc.report_date = %s
+                                 AND hc.value > 0
+                LEFT JOIN holdings hp ON hp.cik = t.cik
+                                      AND hp.cusip = %s
+                                      AND hp.report_date = %s
+                                      AND hp.value > 0
+                WHERE EXISTS (
+                    SELECT 1 FROM holdings
+                    WHERE cik = t.cik AND report_date = %s
+                      AND value > 0 AND cusip != '000000000'
+                )
+                  AND hc.shares > COALESCE(hp.shares, 0)
+                """,
+                (cusip, curr_date, cusip, p_date, p_date),
+            )
+            db_rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    result = []
+    for institution, cik, curr_aum, curr_val, curr_shares, prev_shares in db_rows:
+        diff = curr_shares - prev_shares
+        if tab == "buy":
+            raw = round(curr_val * diff / curr_shares) if curr_shares else 0
+            result.append({"name": institution, "cik": cik, "display": _fmt_value(raw), "raw": raw})
+        elif tab == "weight":
+            raw = (curr_val * diff / curr_shares / curr_aum) if curr_aum and curr_shares else 0.0
+            result.append({"name": institution, "cik": cik, "display": f"{raw*100:.4f}%", "raw": raw})
+        else:  # inst
+            result.append({"name": institution, "cik": cik, "display": None, "raw": curr_aum or 0})
+
+    result.sort(key=lambda x: -x["raw"])
+
+    for item in result:
+        del item["raw"]
+    return result
+
+
+@app.route("/api/consensus/detail")
+def api_consensus_detail():
+    """GET /api/consensus/detail?cusip=…&tab=… — 통합분석 종목의 탭별 기관 상세 정보를 JSON으로 반환한다."""
+    cusip = request.args.get("cusip", "").strip()
+    tab   = request.args.get("tab", "inst").strip()
+    if not cusip:
+        return jsonify({"error": "cusip required"}), 400
+    if tab not in ("inst", "buy", "weight"):
+        return jsonify({"error": "invalid tab"}), 400
+    return jsonify({"institutions": fetch_consensus_detail(cusip, tab)})
 
 
 @app.route("/consensus")
@@ -318,21 +388,21 @@ def consensus():
 
     consensus_rows = []
     for r in db_rows:
-        row = {'ticker': r[4] or '-', 'company_name': r[5]}
+        row = {'ticker': r[4] or '-', 'company_name': r[5], 'cusip': r[6]}
         if tab == "composite":
             row.update({
                 'rank': r[0],
-                'composite_score': f"{r[6]:.1f}",
+                'composite_score': f"{r[7]:.1f}",
                 'inst_rank':   r[1] if r[1] else '-',
                 'buy_rank':    r[2] if r[2] else '-',
                 'weight_rank': r[3] if r[3] else '-',
             })
         elif tab == "inst":
-            row.update({'rank': r[1], 'value': str(r[7])})
+            row.update({'rank': r[1], 'value': str(r[8])})
         elif tab == "buy":
-            row.update({'rank': r[2], 'value': _fmt_value(r[8])})
+            row.update({'rank': r[2], 'value': _fmt_value(r[9])})
         else:
-            row.update({'rank': r[3], 'value': f"{r[9]*100:.4f}%"})
+            row.update({'rank': r[3], 'value': f"{r[10]*100:.4f}%"})
         consensus_rows.append(row)
 
     tabs = [{'key': k, 'label': l, 'active': k == tab} for k, l in TAB_DEFS]

@@ -3,6 +3,52 @@
 {% block nav_consensus %}class="active"{% endblock %}
 
 {% block content %}
+<style>
+  /* ---- 확장 패널 ---- */
+  .consensus-row { cursor: pointer; }
+  .expand-icon {
+    color: var(--muted-2); font-size: 13px; margin-left: 6px;
+    display: inline-block;
+    transition: transform .2s, color .15s;
+  }
+  .consensus-row.open .expand-icon { transform: rotate(90deg); color: var(--accent); }
+  .consensus-row:hover .expand-icon { color: var(--accent); }
+
+  tr.detail-row td { padding: 0; background: #f5f8fd; border-bottom: 1px solid var(--border); }
+  .detail-panel { padding: 14px 20px 14px 56px; }
+  .detail-title {
+    font-size: 11px; font-weight: 600; color: var(--muted);
+    text-transform: uppercase; letter-spacing: .06em;
+    margin-bottom: 10px;
+  }
+
+  .inst-two-col { display: flex; }
+  .inst-col { flex: 1; }
+  .inst-col + .inst-col { border-left: 1px solid var(--border); }
+  .inst-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 12px; border-bottom: 1px solid var(--border);
+    font-size: 13px;
+  }
+  .inst-col:last-child .inst-row:last-child { border-bottom: none; }
+  .inst-rank { color: var(--muted); width: 22px; text-align: right; flex-shrink: 0; }
+  .inst-row a { color: var(--fg); }
+  .inst-row a:hover { color: var(--accent); text-decoration: underline; }
+
+  .detail-table { border-collapse: collapse; font-size: 13px; }
+  .detail-table td {
+    padding: 5px 14px; border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .detail-table tbody tr:last-child td { border-bottom: none; }
+  .detail-table .dt-rank { color: var(--muted); width: 28px; text-align: right; }
+  .detail-table .dt-val  { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .detail-table a { color: var(--fg); }
+  .detail-table a:hover { color: var(--accent); text-decoration: underline; }
+
+  .detail-loading { color: var(--muted); font-size: 13px; }
+</style>
+
 <main class="container tight">
   <div class="breadcrumb"><a href="/">← 목록으로</a></div>
   <header class="page-head">
@@ -61,11 +107,11 @@
       </thead>
       <tbody>
         {% for row in rows %}
+        {% if tab == "composite" %}
         <tr>
           <td class="rank">{{ row.rank }}</td>
           <td><span class="ticker">{{ row.ticker }}</span></td>
           <td class="primary">{{ row.company_name }}</td>
-          {% if tab == "composite" %}
           <td class="num">
             <div class="score-cell">
               <div class="score-bar">
@@ -77,14 +123,123 @@
           <td class="num sub">{{ row.inst_rank }}</td>
           <td class="num sub">{{ row.buy_rank }}</td>
           <td class="num sub">{{ row.weight_rank }}</td>
-          {% else %}
-          <td class="num">{{ row.value }}</td>
-          {% endif %}
         </tr>
+        {% else %}
+        <tr class="consensus-row" data-cusip="{{ row.cusip }}">
+          <td class="rank">{{ row.rank }}</td>
+          <td><span class="ticker">{{ row.ticker }}</span></td>
+          <td class="primary">{{ row.company_name }}<span class="expand-icon">›</span></td>
+          <td class="num">{{ row.value }}</td>
+        </tr>
+        {% endif %}
         {% endfor %}
       </tbody>
     </table>
   </div>
   {% endif %}
 </main>
+
+<script>
+(function () {
+  var tab = '{{ tab }}';
+  if (tab === 'composite') return;
+
+  var cache = {};
+  var openCusip = null;
+
+  var TITLES = {
+    inst:   '매수 기관 목록',
+    buy:    '기관별 매수 금액',
+    weight: '기관별 포트폴리오 비중 변화'
+  };
+
+  function renderContent(institutions) {
+    var title = TITLES[tab] + ' (' + institutions.length + '개)';
+    var titleHtml = '<div class="detail-title">' + title + '</div>';
+
+    if (!institutions.length) {
+      return titleHtml + '<p class="detail-loading">매수 기관 없음</p>';
+    }
+
+    if (tab === 'inst') {
+      var mid   = Math.ceil(institutions.length / 2);
+      var left  = institutions.slice(0, mid);
+      var right = institutions.slice(mid);
+      function makeRows(items, offset) {
+        return items.map(function (i, idx) {
+          return '<div class="inst-row"><span class="inst-rank">' + (offset + idx + 1) + '</span>' +
+                 '<a href="/institution/' + i.cik + '">' + i.name + '</a></div>';
+        }).join('');
+      }
+      return titleHtml +
+        '<div class="inst-two-col">' +
+          '<div class="inst-col">' + makeRows(left, 0) + '</div>' +
+          '<div class="inst-col">' + makeRows(right, mid) + '</div>' +
+        '</div>';
+    }
+
+    var rows = institutions.map(function (i, idx) {
+      return '<tr><td class="dt-rank">' + (idx + 1) + '</td>' +
+             '<td><a href="/institution/' + i.cik + '">' + i.name + '</a></td>' +
+             '<td class="dt-val">' + i.display + '</td></tr>';
+    }).join('');
+    return titleHtml + '<table class="detail-table"><tbody>' + rows + '</tbody></table>';
+  }
+
+  function openDetail(row, cusip) {
+    if (!row._detailRow) {
+      var tr = document.createElement('tr');
+      tr.className = 'detail-row';
+      tr.innerHTML = '<td colspan="4"><div class="detail-panel"><span class="detail-loading">불러오는 중…</span></div></td>';
+      row.after(tr);
+      row._detailRow = tr;
+    }
+    row._detailRow.style.display = '';
+    row.classList.add('open');
+    openCusip = cusip;
+
+    if (cache[cusip] !== undefined) {
+      row._detailRow.querySelector('.detail-panel').innerHTML = renderContent(cache[cusip]);
+      return;
+    }
+
+    fetch('/api/consensus/detail?cusip=' + encodeURIComponent(cusip) + '&tab=' + tab)
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        cache[cusip] = data.institutions;
+        if (openCusip === cusip) {
+          row._detailRow.querySelector('.detail-panel').innerHTML = renderContent(data.institutions);
+        }
+      })
+      .catch(function () {
+        if (openCusip === cusip) {
+          row._detailRow.querySelector('.detail-panel').innerHTML = '<span class="detail-loading">오류가 발생했습니다.</span>';
+        }
+      });
+  }
+
+  function closeDetail(row) {
+    if (row._detailRow) row._detailRow.style.display = 'none';
+    row.classList.remove('open');
+    openCusip = null;
+  }
+
+  document.querySelectorAll('.consensus-row').forEach(function (row) {
+    row.addEventListener('click', function () {
+      var cusip = this.dataset.cusip;
+
+      if (openCusip && openCusip !== cusip) {
+        var prev = document.querySelector('.consensus-row[data-cusip="' + openCusip + '"]');
+        if (prev) closeDetail(prev);
+      }
+
+      if (openCusip === cusip) {
+        closeDetail(this);
+      } else {
+        openDetail(this, cusip);
+      }
+    });
+  });
+})();
+</script>
 {% endblock %}
