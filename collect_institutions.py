@@ -329,6 +329,9 @@ def main(year_arg: str, quarter_str: str, top100_only: bool = False) -> None:
 
     build_top100_institutions(session, report_date, p_date)
 
+    from translate_institutions import translate_top100
+    translate_top100()
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:

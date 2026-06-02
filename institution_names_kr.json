@@ -1,0 +1,405 @@
+{
+  "updated_at": "2026-06-03T02:18:09",
+  "institutions": {
+    "0002012383": {
+      "name_en": "BlackRock, Inc.",
+      "name_kr": "블랙록"
+    },
+    "0002100119": {
+      "name_en": "VANGUARD CAPITAL MANAGEMENT LLC",
+      "name_kr": "뱅가드 캐피탈 매니지먼트"
+    },
+    "0000093751": {
+      "name_en": "STATE STREET CORP",
+      "name_kr": "스테이트 스트리트"
+    },
+    "0000315066": {
+      "name_en": "FMR LLC",
+      "name_kr": "피델리티"
+    },
+    "0002100121": {
+      "name_en": "VANGUARD PORTFOLIO MANAGEMENT LLC",
+      "name_kr": "뱅가드 포트폴리오 매니지먼트"
+    },
+    "0000895421": {
+      "name_en": "MORGAN STANLEY",
+      "name_kr": "모건 스탠리"
+    },
+    "0001214717": {
+      "name_en": "GEODE CAPITAL MANAGEMENT, LLC",
+      "name_kr": "지오드 캐피탈 매니지먼트"
+    },
+    "0000019617": {
+      "name_en": "JPMORGAN CHASE & CO",
+      "name_kr": "JP모건 체이스"
+    },
+    "0000070858": {
+      "name_en": "BANK OF AMERICA CORP /DE/",
+      "name_kr": "뱅크 오브 아메리카"
+    },
+    "0001446194": {
+      "name_en": "SUSQUEHANNA INTERNATIONAL GROUP, LLP",
+      "name_kr": "서스퀘하나 인터내셔널 그룹"
+    },
+    "0000886982": {
+      "name_en": "GOLDMAN SACHS GROUP INC",
+      "name_kr": "골드만삭스 그룹"
+    },
+    "0001374170": {
+      "name_en": "NORGES BANK",
+      "name_kr": "노르웨이 중앙은행"
+    },
+    "0001595888": {
+      "name_en": "JANE STREET GROUP, LLC",
+      "name_kr": "제인 스트리트 그룹"
+    },
+    "0000073124": {
+      "name_en": "NORTHERN TRUST CORP",
+      "name_kr": "노던 트러스트"
+    },
+    "0001422849": {
+      "name_en": "Capital World Investors",
+      "name_kr": "캐피탈 월드 인베스터스"
+    },
+    "0001610520": {
+      "name_en": "UBS Group AG",
+      "name_kr": "UBS 그룹"
+    },
+    "0000884546": {
+      "name_en": "CHARLES SCHWAB INVESTMENT MANAGEMENT INC",
+      "name_kr": "찰스 슈왑 인베스트먼트 매니지먼트"
+    },
+    "0000914208": {
+      "name_en": "Invesco Ltd.",
+      "name_kr": "인베스코"
+    },
+    "0001422848": {
+      "name_en": "Capital Research Global Investors",
+      "name_kr": "캐피탈 리서치 글로벌 인베스터스"
+    },
+    "0001423053": {
+      "name_en": "CITADEL ADVISORS LLC",
+      "name_kr": "시타델 어드바이저스"
+    },
+    "0001000275": {
+      "name_en": "ROYAL BANK OF CANADA",
+      "name_kr": "캐나다 왕립은행"
+    },
+    "0001390777": {
+      "name_en": "Bank of New York Mellon Corp",
+      "name_kr": "뱅크 오브 뉴욕 멜론"
+    },
+    "0000902219": {
+      "name_en": "WELLINGTON MANAGEMENT GROUP LLP",
+      "name_kr": "웰링턴 매니지먼트 그룹"
+    },
+    "0000072971": {
+      "name_en": "WELLS FARGO & COMPANY/MN",
+      "name_kr": "웰스 파고"
+    },
+    "0000354204": {
+      "name_en": "DIMENSIONAL FUND ADVISORS LP",
+      "name_kr": "디멘셔널 펀드 어드바이저스"
+    },
+    "0000861177": {
+      "name_en": "UBS AM, a distinct business unit of UBS ASSET MANAGEMENT AMERICAS LLC",
+      "name_kr": "UBS 자산운용"
+    },
+    "0000764068": {
+      "name_en": "Legal & General Group Plc",
+      "name_kr": "리걸 앤 제너럴 그룹"
+    },
+    "0000820027": {
+      "name_en": "AMERIPRISE FINANCIAL INC",
+      "name_kr": "아메리프라이즈 파이낸셜"
+    },
+    "0001562230": {
+      "name_en": "Capital International Investors",
+      "name_kr": "캐피탈 인터내셔널 인베스터스"
+    },
+    "0000312069": {
+      "name_en": "BARCLAYS PLC",
+      "name_kr": "바클레이즈"
+    },
+    "0000038777": {
+      "name_en": "FRANKLIN RESOURCES INC",
+      "name_kr": "프랭클린 템플턴"
+    },
+    "0000933478": {
+      "name_en": "VANGUARD FIDUCIARY TRUST CO",
+      "name_kr": "뱅가드 피듀셔리 트러스트"
+    },
+    "0001403438": {
+      "name_en": "LPL Financial LLC",
+      "name_kr": "LPL 파이낸셜"
+    },
+    "0001407543": {
+      "name_en": "ENVESTNET ASSET MANAGEMENT INC",
+      "name_kr": "엔베스트넷 자산운용"
+    },
+    "0001871926": {
+      "name_en": "Nuveen, LLC",
+      "name_kr": "누빈"
+    },
+    "0001330387": {
+      "name_en": "Amundi",
+      "name_kr": "아문디"
+    },
+    "0000720005": {
+      "name_en": "RAYMOND JAMES FINANCIAL INC",
+      "name_kr": "레이먼드 제임스 파이낸셜"
+    },
+    "0001109448": {
+      "name_en": "ALLIANCEBERNSTEIN L.P.",
+      "name_kr": "얼라이언스번스틴"
+    },
+    "0000948046": {
+      "name_en": "DEUTSCHE BANK AG\\",
+      "name_kr": "도이치방크"
+    },
+    "0000912938": {
+      "name_en": "MASSACHUSETTS FINANCIAL SERVICES CO /MA/",
+      "name_kr": "매사추세츠 파이낸셜 서비스"
+    },
+    "0000850529": {
+      "name_en": "Fisher Asset Management, LLC",
+      "name_kr": "피셔 자산운용"
+    },
+    "0001859606": {
+      "name_en": "Optiver Holding B.V.",
+      "name_kr": "옵티버 홀딩"
+    },
+    "0001452861": {
+      "name_en": "IMC-Chicago, LLC",
+      "name_kr": "IMC-시카고"
+    },
+    "0000927971": {
+      "name_en": "BANK OF MONTREAL /CAN/",
+      "name_kr": "몬트리올 은행"
+    },
+    "0001067983": {
+      "name_en": "Berkshire Hathaway Inc",
+      "name_kr": "버크셔 해서웨이"
+    },
+    "0001273087": {
+      "name_en": "MILLENNIUM MANAGEMENT LLC",
+      "name_kr": "밀레니엄 매니지먼트"
+    },
+    "0000831001": {
+      "name_en": "CITIGROUP INC",
+      "name_kr": "씨티그룹"
+    },
+    "0001167557": {
+      "name_en": "AQR CAPITAL MANAGEMENT LLC",
+      "name_kr": "AQR 캐피탈 매니지먼트"
+    },
+    "0001445893": {
+      "name_en": "CTC LLC",
+      "name_kr": "CTC"
+    },
+    "0000815917": {
+      "name_en": "JONES FINANCIAL COMPANIES LLLP",
+      "name_kr": "존스 파이낸셜 컴퍼니스"
+    },
+    "0001166588": {
+      "name_en": "BNP PARIBAS FINANCIAL MARKETS",
+      "name_kr": "BNP 파리바 파이낸셜 마켓"
+    },
+    "0001274173": {
+      "name_en": "JANUS HENDERSON GROUP PLC",
+      "name_kr": "재너스 헨더슨 그룹"
+    },
+    "0000748054": {
+      "name_en": "AMERICAN CENTURY COMPANIES INC",
+      "name_kr": "아메리칸 센츄리 컴퍼니스"
+    },
+    "0000873630": {
+      "name_en": "HSBC HOLDINGS PLC",
+      "name_kr": "HSBC 홀딩스"
+    },
+    "0001126328": {
+      "name_en": "PRINCIPAL FINANCIAL GROUP INC",
+      "name_kr": "프린시펄 파이낸셜 그룹"
+    },
+    "0001811242": {
+      "name_en": "Vanguard Global Advisers, LLC",
+      "name_kr": "뱅가드 글로벌 어드바이저스"
+    },
+    "0001164508": {
+      "name_en": "ARROWSTREET CAPITAL, LIMITED PARTNERSHIP",
+      "name_kr": "애로우스트리트 캐피탈"
+    },
+    "0000200217": {
+      "name_en": "Dodge & Cox",
+      "name_kr": "닷지 앤 콕스"
+    },
+    "0001582202": {
+      "name_en": "Swiss National Bank",
+      "name_kr": "스위스 국립은행"
+    },
+    "0001009207": {
+      "name_en": "D. E. Shaw & Co., Inc.",
+      "name_kr": "D. E. 쇼 & 컴퍼니"
+    },
+    "0000919079": {
+      "name_en": "California Public Employees Retirement System",
+      "name_kr": "캘리포니아 공무원 연금"
+    },
+    "0001141802": {
+      "name_en": "NORTHWESTERN MUTUAL WEALTH MANAGEMENT CO",
+      "name_kr": "노스웨스턴 뮤추얼 웰스 매니지먼트"
+    },
+    "0000713676": {
+      "name_en": "PNC FINANCIAL SERVICES GROUP, INC.",
+      "name_kr": "PNC 파이낸셜 서비스 그룹"
+    },
+    "0001040188": {
+      "name_en": "VICTORY CAPITAL MANAGEMENT INC",
+      "name_kr": "빅토리 캐피탈 매니지먼트"
+    },
+    "0001283718": {
+      "name_en": "CANADA PENSION PLAN INVESTMENT BOARD",
+      "name_kr": "캐나다 연금 투자위원회"
+    },
+    "0001475365": {
+      "name_en": "Sumitomo Mitsui Trust Group, Inc.",
+      "name_kr": "스미토모 미쓰이 신탁 그룹"
+    },
+    "0001488542": {
+      "name_en": "SIMPLEX TRADING, LLC",
+      "name_kr": "심플렉스 트레이딩"
+    },
+    "0001466546": {
+      "name_en": "Mitsubishi UFJ Asset Management Co., Ltd.",
+      "name_kr": "미쓰비시 UFJ 자산운용"
+    },
+    "0001540235": {
+      "name_en": "Creative Planning",
+      "name_kr": "크리에이티브 플래닝"
+    },
+    "0000053417": {
+      "name_en": "JENNISON ASSOCIATES LLC",
+      "name_kr": "제니슨 어소시에이츠"
+    },
+    "0001125816": {
+      "name_en": "FIRST TRUST ADVISORS LP",
+      "name_kr": "퍼스트 트러스트 어드바이저스"
+    },
+    "0001608046": {
+      "name_en": "National Pension Service",
+      "name_kr": "국민연금공단"
+    },
+    "0001465109": {
+      "name_en": "NEUBERGER BERMAN GROUP LLC",
+      "name_kr": "뉴버거 버먼 그룹"
+    },
+    "0000318989": {
+      "name_en": "FIL Ltd",
+      "name_kr": "피델리티 인터내셔널"
+    },
+    "0000763212": {
+      "name_en": "PRIMECAP MANAGEMENT CO/CA/",
+      "name_kr": "프라임캡 매니지먼트"
+    },
+    "0000315032": {
+      "name_en": "STATE FARM MUTUAL AUTOMOBILE INSURANCE CO",
+      "name_kr": "스테이트 팜"
+    },
+    "0001179392": {
+      "name_en": "TWO SIGMA INVESTMENTS, LP",
+      "name_kr": "투 시그마 인베스트먼트"
+    },
+    "0001056053": {
+      "name_en": "TD Asset Management Inc",
+      "name_kr": "TD 자산운용"
+    },
+    "0001086619": {
+      "name_en": "SCHRODER INVESTMENT MANAGEMENT GROUP",
+      "name_kr": "슈로더 인베스트먼트 매니지먼트 그룹"
+    },
+    "0001115418": {
+      "name_en": "RHUMBLINE ADVISERS",
+      "name_kr": "럼블라인 어드바이저스"
+    },
+    "0000928047": {
+      "name_en": "MANUFACTURERS LIFE INSURANCE COMPANY, THE",
+      "name_kr": "매뉴라이프 생명보험"
+    },
+    "0001680208": {
+      "name_en": "VANGUARD ASSET MANAGEMENT, Ltd",
+      "name_kr": "뱅가드 자산운용"
+    },
+    "0001348883": {
+      "name_en": "Clearbridge Investments, LLC",
+      "name_kr": "클리어브릿지 인베스트먼트"
+    },
+    "0001694217": {
+      "name_en": "DZ BANK AG Deutsche Zentral Genossenschafts Bank, Frankfurt am Main",
+      "name_kr": "DZ 방크"
+    },
+    "0000926171": {
+      "name_en": "NATIONAL BANK OF CANADA /FI/",
+      "name_kr": "캐나다 국립은행"
+    },
+    "0000720672": {
+      "name_en": "STIFEL FINANCIAL CORP",
+      "name_kr": "스티펠 파이낸셜"
+    },
+    "0000944388": {
+      "name_en": "1832 Asset Management L.P.",
+      "name_kr": "1832 자산운용"
+    },
+    "0000350894": {
+      "name_en": "SEI INVESTMENTS CO",
+      "name_kr": "SEI 인베스트먼트"
+    },
+    "0001218210": {
+      "name_en": "NORDEA INVESTMENT MANAGEMENT AB",
+      "name_kr": "노르디아 인베스트먼트 매니지먼트"
+    },
+    "0001318757": {
+      "name_en": "MARSHALL WACE, LLP",
+      "name_kr": "마셜 웨이스"
+    },
+    "0001088875": {
+      "name_en": "BAILLIE GIFFORD & CO",
+      "name_kr": "베일리 기포드"
+    },
+    "0001068837": {
+      "name_en": "VOYA INVESTMENT MANAGEMENT LLC",
+      "name_kr": "보야 인베스트먼트 매니지먼트"
+    },
+    "0001386060": {
+      "name_en": "Boston Partners",
+      "name_kr": "보스턴 파트너스"
+    },
+    "0001535323": {
+      "name_en": "Allianz Asset Management GmbH",
+      "name_kr": "알리안츠 자산운용"
+    },
+    "0000946431": {
+      "name_en": "Swedbank AB",
+      "name_kr": "스웨드방크"
+    },
+    "0001993888": {
+      "name_en": "Pictet Asset Management Holding SA",
+      "name_kr": "픽테 자산운용 홀딩"
+    },
+    "0001081019": {
+      "name_en": "CALIFORNIA STATE TEACHERS RETIREMENT SYSTEM",
+      "name_kr": "캘리포니아 주 교사 연금"
+    },
+    "0001462245": {
+      "name_en": "HighTower Advisors, LLC",
+      "name_kr": "하이타워 어드바이저스"
+    },
+    "0001666741": {
+      "name_en": "Cetera Investment Advisers",
+      "name_kr": "세테라 인베스트먼트 어드바이저스"
+    },
+    "0001692234": {
+      "name_en": "Russell Investments Group, Ltd.",
+      "name_kr": "러셀 인베스트먼트 그룹"
+    }
+  }
+}

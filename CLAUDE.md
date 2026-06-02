@@ -23,6 +23,13 @@ python app.py
 python scheduler.py
 ```
 
+## 배포 방식
+
+**Oracle Cloud Always Free VM** (단일 서버) 사용 예정.
+Flask 웹서버 + APScheduler + PostgreSQL을 VM 한 대에서 함께 실행한다.
+단일 서버이므로 `collect_institutions.py`가 생성하는 `institution_names_kr.json`을
+`app.py`가 같은 경로에서 바로 읽을 수 있다 (파일 동기화 불필요).
+
 ## 환경 변수 (.env)
 
 ```
@@ -33,6 +40,8 @@ DB_USER=postgres
 DB_PASSWORD=
 
 OPENFIGI_API_KEY=   # 없으면 배치 10개/2.5초 제한, 있으면 100개/0.3초
+
+GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translate_institutions.py)
 ```
 
 ## 파일 역할

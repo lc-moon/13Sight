@@ -39,7 +39,10 @@
           <tr>
             <td class="rank">{{ row.rank }}</td>
             <td class="mono">{{ row.cik }}</td>
-            <td class="primary"><a href="/institution/{{ row.cik }}">{{ row.institution }}</a></td>
+            <td class="primary">
+              <a href="/institution/{{ row.cik }}">{{ row.institution }}</a>
+              {% if row.institution_ko %}<div class="name-kr">{{ row.institution_ko }}</div>{% endif %}
+            </td>
             <td class="num">{{ row.aum_html | safe }}</td>
           </tr>
           {% endfor %}

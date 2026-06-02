@@ -4,10 +4,48 @@
 {% block content %}
 <main class="container tight">
   <div class="breadcrumb"><a href="/">← 목록으로</a></div>
-  <header class="page-head">
-    <h1 class="page-title">보유 종목</h1>
-    <div class="page-subtitle mono">CIK {{ cik_display }}</div>
-  </header>
+  <h1 class="inst-name">{{ institution or cik_display }}</h1>
+  {% if institution_ko %}<p class="inst-name-ko">{{ institution_ko }}</p>{% endif %}
+  <p class="inst-meta">
+    <span class="mono">{{ cik_display }}</span>
+    {% if rank %}
+    <span class="dot">·</span>
+    <span>100대 기관 중 <strong>{{ rank }}위</strong></span>
+    {% endif %}
+    {% if latest_label %}
+    <span class="dot">·</span>
+    <span><strong>{{ latest_label }}</strong></span>
+    {% endif %}
+    {% if holdings_count %}
+    <span class="dot">·</span>
+    <span>보유 종목 <strong>{{ holdings_count }}개</strong></span>
+    {% endif %}
+  </p>
+  {% if aum_current != '-' %}
+  <div class="aum-card">
+    <div class="aum-left">
+      <div class="aum-caption">현재 운용금액 (AUM)</div>
+      <div class="aum-value">{{ aum_current }}</div>
+      {% if aum_delta_html %}<div class="aum-delta">{{ aum_delta_html | safe }}</div>{% endif %}
+    </div>
+    <div class="aum-chart">
+      {% if aum_prev != '-' %}
+      <div class="bar-col">
+        <div class="bar bar-prev" style="height: {{ aum_prev_pct }}%">
+          <span class="bar-value">{{ aum_prev }}</span>
+        </div>
+        <span class="bar-label">{{ prev_label }}</span>
+      </div>
+      {% endif %}
+      <div class="bar-col">
+        <div class="bar bar-curr" style="height: {{ aum_curr_pct }}%">
+          <span class="bar-value">{{ aum_current }}</span>
+        </div>
+        <span class="bar-label">{{ latest_label }}</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
 
   {% if not has_dates %}
   <p style="color: var(--muted)">데이터 없음 — collect_holdings.py를 먼저 실행해 holdings 데이터를 수집하세요.</p>

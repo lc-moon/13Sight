@@ -1,9 +1,35 @@
 """13F 보유 종목 검색 및 기관별 포트폴리오 비교 분석을 제공하는 Flask 웹 서버."""
+import json
+import os
 import psycopg2
 from flask import Flask, request, jsonify, render_template
 from utils import DB_CONFIG, prev_quarter_date
 
+_KR_JSON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "institution_names_kr.json")
+
+def _load_kr_names() -> dict:
+    """institution_names_kr.json에서 {cik: name_kr} 매핑을 반환한다."""
+    if not os.path.exists(_KR_JSON_PATH):
+        return {}
+    with open(_KR_JSON_PATH, encoding="utf-8") as f:
+        data = json.load(f)
+    return {cik: v["name_kr"] for cik, v in data.get("institutions", {}).items()}
+
 app = Flask(__name__)
+
+
+def fetch_institution_meta(cik: str):
+    """top100_institutions에서 특정 CIK의 rank, 영문명, curr/prev AUM을 반환한다. top100 밖이면 None."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT rank, institution, curr_amount_usd, prev_amount_usd FROM top100_institutions WHERE cik = %s",
+                (cik,),
+            )
+            return cur.fetchone()
+    finally:
+        conn.close()
 
 
 def fetch_top100():
@@ -99,6 +125,32 @@ def _fmt_shares(v) -> str:
     return f"{abs(v):,}"
 
 
+def _fmt_aum(v) -> str:
+    """금액을 '$5.7조' / '$1,928억' 한국어 단위로 포맷한다."""
+    if v is None:
+        return "-"
+    if v >= 1_000_000_000_000:
+        return f"${v / 1_000_000_000_000:.1f}조"
+    if v >= 100_000_000:
+        return f"${round(v / 100_000_000):,}억"
+    if v >= 1_000_000:
+        return f"${v / 1_000_000:.1f}M"
+    return f"${v:,.0f}"
+
+
+def _aum_delta_html(curr, prev) -> str:
+    """AUM 전분기 대비 증감 HTML. 클래스 기반으로 색상 처리."""
+    if curr is None or prev is None or prev == 0:
+        return ""
+    diff = curr - prev
+    if diff == 0:
+        return ""
+    sign = "▲ +" if diff > 0 else "▼ -"
+    cls  = "is-up" if diff > 0 else "is-down"
+    pct  = abs(diff) / prev * 100
+    return f'<span class="{cls}">{sign}{_fmt_aum(abs(diff))} ({pct:.1f}%)</span>'
+
+
 def change_html_value(current, previous) -> str:
     """전분기 대비 평가금액 변동을 ▲빨강/▼파랑 색상 HTML로 반환한다."""
     base = _fmt_value(current)
@@ -156,12 +208,14 @@ def _index_aum_html(curr, prev) -> str:
 def index():
     """GET / — 검색창과 운용금액 상위 100개 기관 목록을 렌더링한다."""
     rows = fetch_top100()
+    kr_names = _load_kr_names()
 
     table_data = [
         {
             'rank': rank,
             'cik': cik,
             'institution': institution,
+            'institution_ko': kr_names.get(cik, ''),
             'aum_html': _index_aum_html(curr_amount_usd, prev_amount_usd),
         }
         for rank, cik, institution, curr_amount_usd, prev_amount_usd in rows
@@ -175,10 +229,31 @@ def institution_detail(cik):
     cik_display = cik.zfill(10)
     cik_raw     = cik_display  # DB에 10자리 제로패딩으로 저장됨
 
+    meta = fetch_institution_meta(cik_raw)
+    kr_names = _load_kr_names()
+    institution    = meta[1] if meta else ''
+    institution_ko = kr_names.get(cik_raw, '')
+    rank           = meta[0] if meta else None
+    curr_aum       = meta[2] if meta else None
+    prev_aum       = meta[3] if meta else None
+
+    if curr_aum and prev_aum:
+        hi = max(curr_aum, prev_aum)
+        aum_curr_pct = round(curr_aum / hi * 100)
+        aum_prev_pct = round(prev_aum / hi * 100)
+    else:
+        aum_curr_pct, aum_prev_pct = 100, 0
+
     dates = fetch_report_dates(cik_raw)
     if not dates:
         return render_template('institution.html',
             cik_display=cik_display, has_dates=False,
+            institution=institution, institution_ko=institution_ko,
+            rank=rank,
+            aum_current=_fmt_aum(curr_aum), aum_prev=_fmt_aum(prev_aum),
+            aum_delta_html=_aum_delta_html(curr_aum, prev_aum),
+            aum_curr_pct=aum_curr_pct, aum_prev_pct=aum_prev_pct,
+            holdings_count=0,
             tabs=[], display_rows=[], latest_label='', prev_label='')
 
     latest_date = dates[0]
@@ -249,7 +324,7 @@ def institution_detail(cik):
         display = []
 
     display_rows = []
-    for rank, (row, prev_row, is_full_sell) in enumerate(display, 1):
+    for row_rank, (row, prev_row, is_full_sell) in enumerate(display, 1):
         company_name, cusip, ticker, value, shares, _ = row
         if is_full_sell:
             val_html    = f'{_fmt_value(value)} <span style="color:blue">▼ -{_fmt_value(value)}</span>' if value else "-"
@@ -263,7 +338,7 @@ def institution_detail(cik):
             val_html    = change_html_value(value, prev_value)
             shares_html = change_html_shares(shares, prev_shares)
         display_rows.append({
-            'rank': rank,
+            'rank': row_rank,
             'company_name': company_name,
             'cusip': cusip,
             'ticker': ticker or '-',
@@ -276,6 +351,15 @@ def institution_detail(cik):
     return render_template('institution.html',
         cik_display=cik_display,
         has_dates=True,
+        institution=institution,
+        institution_ko=institution_ko,
+        rank=rank,
+        aum_current=_fmt_aum(curr_aum),
+        aum_prev=_fmt_aum(prev_aum),
+        aum_delta_html=_aum_delta_html(curr_aum, prev_aum),
+        aum_curr_pct=aum_curr_pct,
+        aum_prev_pct=aum_prev_pct,
+        holdings_count=len(latest_by_cusip),
         tabs=tabs,
         display_rows=display_rows,
         latest_label=quarter_label(latest_date),
