@@ -144,6 +144,14 @@ def api_search():
     ])
 
 
+def _index_aum_html(curr, prev) -> str:
+    """메인 페이지 AUM 칸용 HTML. prev가 없으면 '신규 진입' 태그를 표시한다."""
+    base = _fmt_value(curr)
+    if prev is None:
+        return f'{base} <span class="new-tag">신규 진입</span>'
+    return change_html_value(curr, prev)
+
+
 @app.route("/")
 def index():
     """GET / — 검색창과 운용금액 상위 100개 기관 목록을 렌더링한다."""
@@ -154,7 +162,7 @@ def index():
             'rank': rank,
             'cik': cik,
             'institution': institution,
-            'aum_html': change_html_value(curr_amount_usd, prev_amount_usd),
+            'aum_html': _index_aum_html(curr_amount_usd, prev_amount_usd),
         }
         for rank, cik, institution, curr_amount_usd, prev_amount_usd in rows
     ]

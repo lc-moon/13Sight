@@ -287,6 +287,16 @@ def main() -> None:
 
         time.sleep(0.2)
 
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM holdings WHERE report_date NOT IN %s",
+                (tuple([curr_date, prev_date]),),
+            )
+            deleted = cur.rowcount
+    if deleted:
+        print(f"이전 분기 데이터 {deleted}행 삭제 완료")
+
     conn.close()
     print("\n완료.")
 

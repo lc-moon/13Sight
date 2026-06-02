@@ -22,6 +22,12 @@ QUARTER_TO_INDEX = {
     4: (1, 1),  # Q4(12-31) → 다음 해 QTR1 (1~2월 제출)
 }
 
+# top100 선정에서 제외할 CIK 목록 (비정상적인 AUM 신고 기관)
+# all_institutions 테이블에는 원본 데이터를 유지하되 top100 선정 시에만 제외한다.
+EXCLUDED_CIKS: set = {
+    "0001569395",  # Mirae Asset Global Investments Co., Ltd. — BRK/A 오신고로 AUM 과대계상 (실제값의 ~1500배)
+}
+
 # form.idx 파싱용 정규식
 # 컬럼: FormType  CompanyName  CIK  DateFiled  Filename
 _IDX_RE = re.compile(
@@ -229,17 +235,20 @@ def build_top100_institutions(session: requests.Session, report_date: str, prev_
                 )
                 """
             )
-            cur.execute("TRUNCATE TABLE top100_institutions")
+            excluded = tuple(EXCLUDED_CIKS) if EXCLUDED_CIKS else ("",)
             cur.execute(
                 """
                 SELECT cik, institution, amount_usd
                 FROM all_institutions
                 WHERE report_date = %s
+                  AND cik NOT IN %s
                 ORDER BY amount_usd DESC
                 LIMIT 100
                 """,
-                (report_date,)
+                (report_date, excluded)
             )
+            if EXCLUDED_CIKS:
+                print(f"  [제외] {len(EXCLUDED_CIKS)}개 CIK 제외됨: {', '.join(EXCLUDED_CIKS)}")
             top100 = cur.fetchall()
         conn.commit()
     finally:
@@ -257,6 +266,7 @@ def build_top100_institutions(session: requests.Session, report_date: str, prev_
     try:
         with conn:
             with conn.cursor() as cur:
+                cur.execute("TRUNCATE TABLE top100_institutions")
                 execute_values(
                     cur,
                     """
@@ -276,52 +286,55 @@ def build_top100_institutions(session: requests.Session, report_date: str, prev_
 # 진입점
 # ─────────────────────────────────────────────────────────────────────────────
 
-def main(year_arg: str, quarter_str: str) -> None:
+def main(year_arg: str, quarter_str: str, top100_only: bool = False) -> None:
     year_val = int(year_arg)
     year     = year_val if year_val >= 1000 else 2000 + year_val  # 2자리/4자리 모두 허용
     quarter  = int(quarter_str)
 
-    print(f"\n{year}년 {quarter}분기 전체 기관 13F 수집을 시작합니다.")
-
     report_date = f"{year}-{QUARTER_END[quarter]}"
     p_date      = str(prev_quarter_date(date.fromisoformat(report_date)))
-    idx_year, idx_qtr = quarter_to_index_quarter(year, quarter)
-    session = sec_session()
+    session     = sec_session()
 
-    filings = fetch_all_13f_filings(session, idx_year, idx_qtr)
+    if not top100_only:
+        print(f"\n{year}년 {quarter}분기 전체 기관 13F 수집을 시작합니다.")
+        idx_year, idx_qtr = quarter_to_index_quarter(year, quarter)
+        filings = fetch_all_13f_filings(session, idx_year, idx_qtr)
 
-    records    = []
-    skip_count = 0
+        records    = []
+        skip_count = 0
 
-    for i, (cik, accession) in enumerate(filings, 1):
-        institution, amount = get_institution_data(session, cik, accession)
-        if institution and amount is not None:
-            records.append((cik.zfill(10), institution, amount, report_date))
-        else:
-            skip_count += 1
+        for i, (cik, accession) in enumerate(filings, 1):
+            institution, amount = get_institution_data(session, cik, accession)
+            if institution and amount is not None:
+                records.append((cik.zfill(10), institution, amount, report_date))
+            else:
+                skip_count += 1
 
-        if i % 100 == 0:
-            print(
-                f"  진행 중: {i}/{len(filings)} "
-                f"(수집 {len(records)} / 스킵 {skip_count})"
-            )
+            if i % 100 == 0:
+                print(
+                    f"  진행 중: {i}/{len(filings)} "
+                    f"(수집 {len(records)} / 스킵 {skip_count})"
+                )
 
-        time.sleep(0.1)  # SEC 정책: 초당 10 요청 이내
+            time.sleep(0.1)  # SEC 정책: 초당 10 요청 이내
 
-    print(f"\nDB 저장 중... ({len(records)}개 기관)")
-    dup_count = save_institutions_to_db(records)
-    print(
-        f"완료: {year}년 {quarter}분기 — "
-        f"총 {len(records) - dup_count}개 기관 저장 / {skip_count}개 스킵 / 중복된 CIK {dup_count}개"
-    )
+        print(f"\nDB 저장 중... ({len(records)}개 기관)")
+        dup_count = save_institutions_to_db(records)
+        print(
+            f"완료: {year}년 {quarter}분기 — "
+            f"총 {len(records) - dup_count}개 기관 저장 / {skip_count}개 스킵 / 중복된 CIK {dup_count}개"
+        )
+    else:
+        print(f"\n{year}년 {quarter}분기 top100 재선정을 시작합니다. (전체 기관 재수집 생략)")
 
     build_top100_institutions(session, report_date, p_date)
 
 
 if __name__ == "__main__":
     if len(sys.argv) < 3:
-        print("Usage: python collect_institutions.py <year> <quarter>")
-        print("  예시: python collect_institutions.py 25 4  또는  python collect_institutions.py 2025 4")
+        print("Usage: python collect_institutions.py <year> <quarter> [--top100-only]")
+        print("  예시: python collect_institutions.py 2026 1")
+        print("        python collect_institutions.py 2026 1 --top100-only  # top100만 재선정")
         sys.exit(1)
 
-    main(sys.argv[1], sys.argv[2])
+    main(sys.argv[1], sys.argv[2], top100_only="--top100-only" in sys.argv)
