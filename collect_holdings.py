@@ -11,6 +11,9 @@ OPENFIGI_URL        = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_BATCH_FREE = 10   # API 키 없을 때 최대 10개
 OPENFIGI_BATCH_KEY  = 100  # API 키 있을 때 최대 100개
 
+_BOND_CUSIP = "__BOND__"  # 채권·고정수익 CUSIP을 cache에서 구분하는 sentinel
+_BOND_TYPES = {"Bond", "Note", "Fixed Income", "Government", "Municipal"}  # securityType2 키워드
+
 
 def create_holdings_table(conn) -> None:
     """holdings 테이블과 유니크 인덱스를 생성한다. 이미 존재하면 유지한다."""
@@ -70,7 +73,15 @@ def fetch_tickers_by_cusip(session: requests.Session, cusips: list, cache: dict)
             resp.raise_for_status()
             for cusip, item in zip(batch, resp.json()):
                 data = item.get("data")
-                cache[cusip] = data[0].get("ticker") if data else None
+                if data:
+                    sec_type2 = data[0].get("securityType2", "")
+                    ticker    = data[0].get("ticker") or ""
+                    if any(t in sec_type2 for t in _BOND_TYPES) or " " in ticker:
+                        cache[cusip] = _BOND_CUSIP
+                    else:
+                        cache[cusip] = ticker or None
+                else:
+                    cache[cusip] = None
         except BaseException as e:
             print(f"  [OpenFIGI] 배치 오류: {e}")
             for cusip in batch:
@@ -216,8 +227,10 @@ def save_holdings(conn, cik: str, accession: str, report_date: str, rows: list, 
 
     records_dict = {}
     for cusip, (company_name, value, shares) in agg.items():
-        key = (cik, cusip, accession)
         ticker = ticker_map.get(cusip)
+        if ticker == _BOND_CUSIP:
+            continue
+        key = (cik, cusip, accession)
         records_dict[key] = (cik, accession, company_name, cusip, ticker, value, shares, report_date)
 
     records = list(records_dict.values())
