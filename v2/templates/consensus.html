@@ -51,6 +51,8 @@
   .detail-table a { color: var(--color-ink); }
   .detail-table a:hover { color: var(--color-link); text-decoration: underline; }
   .detail-loading { color: var(--color-mute); font-size: var(--fs-code); }
+  .stock-link { color: var(--color-ink); display: inline-block; }
+  .stock-link:hover .ticker { background: var(--color-canvas-soft-2); }
 </style>
 {% endblock %}
 
@@ -118,7 +120,7 @@
           {% if tab == "composite" %}
           <tr>
             <td class="td-rank">{{ row.rank }}</td>
-            <td><span class="ticker">{{ row.ticker }}</span></td>
+            <td><a href="/stock/{{ row.cusip }}" class="stock-link"><span class="ticker">{{ row.ticker }}</span></a></td>
             <td class="td-name">{{ row.company_name }}</td>
             <td class="td-num">
               <div class="score-cell">
@@ -135,7 +137,7 @@
           {% else %}
           <tr class="consensus-row" data-cusip="{{ row.cusip }}">
             <td class="td-rank">{{ row.rank }}</td>
-            <td><span class="ticker">{{ row.ticker }}</span></td>
+            <td><a href="/stock/{{ row.cusip }}" class="stock-link"><span class="ticker">{{ row.ticker }}</span></a></td>
             <td class="td-name">{{ row.company_name }}<span class="expand-icon">›</span></td>
             <td class="td-num">{{ row.value }}</td>
           </tr>
@@ -205,7 +207,8 @@
   }
 
   document.querySelectorAll('tr.consensus-row').forEach(function (row) {
-    row.addEventListener('click', function () {
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('a')) return;
       var cusip = row.dataset.cusip;
 
       if (openCusip && openCusip !== cusip) {

@@ -252,6 +252,7 @@
       font-family: var(--font-mono); font-size: 12px; font-weight: var(--fw-medium);
       background: var(--color-canvas-soft-2);
       color: var(--color-ink);
+      border: 1px solid var(--color-hairline-strong);
       padding: 2px 7px; border-radius: var(--radius-xs);
       display: inline-block;
     }
@@ -307,6 +308,13 @@
 
     /* ── No data ── */
     .no-data { padding: var(--space-3xl) 0; color: var(--color-mute); font-size: var(--fs-body-sm); text-align: center; }
+    .no-compare { color: var(--color-mute); font-size: var(--fs-caption); margin-left: 4px; }
+    .new-report-badge {
+      font-size: 10px; font-weight: var(--fw-medium);
+      background: var(--color-canvas-soft-2); color: var(--color-mute);
+      border: 1px solid var(--color-hairline);
+      padding: 1px 6px; border-radius: var(--radius-xs); margin-left: 6px;
+    }
   </style>
   {% block extra_head %}{% endblock %}
 </head>

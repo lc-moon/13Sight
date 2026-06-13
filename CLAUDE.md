@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 SEC EDGAR에서 기관투자자의 13F 보고서를 수집·분석하는 도구. 전체 기관 운용금액을 수집하고 상위 100개 기관의 보유 종목을 웹으로 시각화한다.
 
+## 웹 레이어: v2 전용
+
+웹 프론트엔드/서버는 **`v2/` 디렉토리만 작업한다.** 루트의 `app.py`와 `templates/`는 구버전(v1)으로 동결 상태이며 더 이상 사용·수정하지 않는다. 새 기능·수정·리디자인은 모두 `v2/app.py`와 `v2/templates/`에만 추가한다. v1에 맞춘 코드를 별도로 작성하지 않는다.
+
 ## 실행 명령
 
 ```bash
@@ -16,8 +20,8 @@ python collect_institutions.py <year> <quarter>
 # 상위 100개 기관 보유 종목 수집 (holdings 테이블 갱신, 최근 2분기)
 python collect_holdings.py
 
-# 웹 서버 실행 (http://localhost:5000)
-python app.py
+# 웹 서버 실행 (v2 전용, http://localhost:5001)
+python v2/app.py
 
 # 스케줄러 실행 (매년 2/20, 5/20, 8/20, 11/20 자정에 collect_institutions.py 자동 실행)
 python scheduler.py
@@ -50,7 +54,8 @@ GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translat
 |---|---|
 | `collect_institutions.py` | SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액(tableValueTotal)을 수집 → `all_institutions` 테이블 TRUNCATE+INSERT, 상위 100개를 `top100_institutions` 테이블에 rank 포함 저장 |
 | `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT |
-| `app.py` | Flask 웹 서버. `/`(검색+기관 목록), `/institution/<cik>`(5탭 비교 분석), `/consensus`(통합분석), `/api/search`(자동완성 JSON) |
+| `v2/app.py` | **(활성)** Flask 웹 서버. `/`(검색+기관 목록), `/institution/<cik>`(기관 분석), `/stock/<cusip>`(종목 분석), `/consensus`(통합분석), `/api/search`(기관·종목 자동완성 JSON). 포트 5001 |
+| `app.py` · `templates/` | **(동결, v1)** 구버전 웹 레이어. 사용·수정하지 않음 |
 | `build_consensus.py` | top100 기관의 공통 매수 종목을 집계·점수화하여 `consensus` 테이블에 저장. 종합·기관수·매수금액·비중변화 4개 지표 산출. |
 | `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일)에 `collect_institutions.py` 자동 실행 |
 
@@ -58,8 +63,9 @@ GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translat
 
 | 페이지 | URL | 설명 |
 |---|---|---|
-| 메인 페이지 | `/` | 검색창 + 운용금액 상위 100개 기관 목록 |
-| 상세 분석 페이지 | `/institution/<cik>` | 기관별 보유 종목 5탭 비교 분석 |
+| 메인 페이지 | `/` | 검색창(기관·종목) + 운용금액 상위 100개 기관 목록 |
+| 기관 분석 페이지 | `/institution/<cik>` | 기관 → 보유 종목 5탭 비교 분석 |
+| 종목 분석 페이지 | `/stock/<cusip>` | 종목 → 보유 기관 목록·매수/매도 요약·통합분석 점수 (역방향 조회) |
 | 통합분석 페이지 | `/consensus` | top100 기관 공통 매수 종목 4탭(종합·기관수·매수금액·비중변화) 순위 |
 
 ## DB 스키마

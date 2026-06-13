@@ -89,6 +89,9 @@
     background: var(--color-up-soft); color: var(--color-up-strong);
     padding: 1px 6px; border-radius: var(--radius-xs);
   }
+  .stock-link { color: var(--color-ink); }
+  .stock-link:hover .ticker { background: var(--color-canvas-soft-2); }
+  td.td-name .stock-link:hover { color: var(--color-link); text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -199,13 +202,15 @@
             <tr>
               <td class="td-rank">{{ row.rank }}</td>
               <td>
+                <a href="/stock/{{ row.cusip }}" class="stock-link">
                 {% if row.ticker %}
                 <span class="ticker">{{ row.ticker }}</span>
                 {% else %}
                 <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-mute)">{{ row.cusip }}</span>
                 {% endif %}
+                </a>
               </td>
-              <td class="td-name">{{ row.company_name }}</td>
+              <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a></td>
               <td class="td-num">{{ row.val_html | safe }}</td>
               <td class="td-num">{{ row.shares_html | safe }}</td>
             </tr>

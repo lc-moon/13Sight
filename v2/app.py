@@ -193,6 +193,72 @@ def fetch_consensus_detail(cusip: str, tab: str) -> list:
     return result
 
 
+def fetch_stock(cusip: str):
+    """종목(cusip)의 현재·직전 분기 보유 기관 목록과 통합분석 점수를 반환한다."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT MAX(report_date) FROM top100_institutions")
+            curr_date = cur.fetchone()[0]
+            if not curr_date:
+                return None
+            prev_date = prev_quarter_date(curr_date)
+            cur.execute(
+                """
+                SELECT t.institution, t.cik,
+                       hc.value, hc.shares,
+                       hp.value, hp.shares,
+                       COALESCE(hc.company_name, hp.company_name),
+                       COALESCE(hc.ticker, hp.ticker),
+                       t.prev_amount_usd
+                FROM top100_institutions t
+                LEFT JOIN holdings hc ON hc.cik = t.cik AND hc.cusip = %s
+                                      AND hc.report_date = %s AND hc.value > 0
+                LEFT JOIN holdings hp ON hp.cik = t.cik AND hp.cusip = %s
+                                      AND hp.report_date = %s AND hp.value > 0
+                WHERE hc.cik IS NOT NULL OR hp.cik IS NOT NULL
+                ORDER BY hc.value DESC NULLS LAST
+                """,
+                (cusip, curr_date, cusip, prev_date),
+            )
+            rows = cur.fetchall()
+            cur.execute(
+                """
+                SELECT composite_rank, composite_score, inst_rank, institution_count,
+                       buy_rank, total_buy_amount, weight_rank, total_weight_change
+                FROM consensus WHERE cusip = %s
+                """,
+                (cusip,),
+            )
+            cons = cur.fetchone()
+    finally:
+        conn.close()
+    return curr_date, prev_date, rows, cons
+
+
+def fetch_stock_search(q: str) -> list:
+    """최근 분기 holdings에서 ticker·종목명으로 종목을 검색해 (cusip, ticker, company_name)을 반환한다."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT cusip, MAX(ticker), MAX(company_name)
+                FROM holdings
+                WHERE report_date = (SELECT MAX(report_date) FROM holdings)
+                  AND value > 0 AND cusip != '000000000'
+                  AND (ticker ILIKE %s OR company_name ILIKE %s)
+                GROUP BY cusip
+                ORDER BY MAX(value) DESC
+                LIMIT 6
+                """,
+                (f"%{q}%", f"%{q}%"),
+            )
+            return cur.fetchall()
+    finally:
+        conn.close()
+
+
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
 def _fmt_value(v) -> str:
@@ -234,12 +300,7 @@ def _aum_delta_html(curr, prev) -> str:
 def _index_aum_html(curr, prev) -> str:
     base = _fmt_value(curr)
     if prev is None:
-        badge = (
-            f'<span style="font-size:11px;font-weight:600;background:#fdeaea;'
-            f'color:#b91c1c;padding:1px 6px;border-radius:4px;margin-left:4px">'
-            f'신규 진입</span>'
-        )
-        return f"{base} {badge}"
+        return f'{base} <span class="no-compare">직전 분기 없음</span>'
     return change_html_value(curr, prev)
 
 
@@ -280,12 +341,18 @@ def api_search():
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
-    rows = fetch_search_results(q)
     kr_names = _load_kr_names()
-    return jsonify([
-        {"cik": cik, "institution": institution, "institution_ko": kr_names.get(cik, "")}
-        for cik, institution in rows
-    ])
+    institutions = [
+        {"type": "institution", "cik": cik, "institution": institution,
+         "institution_ko": kr_names.get(cik, "")}
+        for cik, institution in fetch_search_results(q)
+    ]
+    stocks = [
+        {"type": "stock", "cusip": cusip, "ticker": ticker or "",
+         "company_name": company_name or ""}
+        for cusip, ticker, company_name in fetch_stock_search(q)
+    ]
+    return jsonify(institutions + stocks)
 
 
 @app.route("/api/consensus/detail")
@@ -320,6 +387,7 @@ def index():
             'cik':            cik,
             'institution':    institution,
             'institution_ko': kr_names.get(cik, ''),
+            'is_new_report':  prev_amount_usd is None,
             'aum_html':       _index_aum_html(curr_amount_usd, prev_amount_usd),
         }
         for rank, cik, institution, curr_amount_usd, prev_amount_usd in rows
@@ -490,6 +558,119 @@ def consensus():
 
     tabs = [{'key': k, 'label': l, 'active': k == tab} for k, l in TAB_DEFS]
     return render_template('consensus.html', tab=tab, tabs=tabs, rows=consensus_rows)
+
+
+@app.route("/stock/<cusip>")
+def stock_detail(cusip):
+    data = fetch_stock(cusip)
+    if not data:
+        return render_template('stock.html', found=False, cusip=cusip)
+
+    curr_date, prev_date, rows, cons = data
+    if not rows:
+        return render_template('stock.html', found=False, cusip=cusip)
+
+    kr_names = _load_kr_names()
+    company_name = ticker = None
+    holders = []
+    n_new = n_buy = n_sell = n_hold = n_full_sell = n_new_inst = 0
+
+    for institution, cik, cval, cshares, pval, pshares, cname, tkr, inst_prev_aum in rows:
+        company_name = company_name or cname
+        ticker = ticker or tkr
+        if not cval:
+            # 직전 분기 대비 전량 매도(현재 보유 0). 필터링 대상으로 표에 포함하되
+            # 기본 보기(보유 기관)에서는 숨긴다.
+            n_full_sell += 1
+            holders.append({
+                'institution':    institution,
+                'institution_ko': kr_names.get(cik, ''),
+                'cik':            cik,
+                'value':          0,
+                'cat':            'full_sell',
+                'tag':            'full_sell',
+                'val_html':       change_html_value(0, pval),
+                'shares_html':    change_html_shares(0, pshares),
+            })
+            continue
+
+        # 직전 분기 13F가 없는 신규 보고 기관(prev_amount_usd IS NULL)은
+        # 비교 기준이 없어 매수/매도·신규 매수로 판단하지 않는다.
+        no_prior = inst_prev_aum is None
+        if no_prior:
+            n_new_inst += 1
+            cat = tag   = 'new_inst'
+            na = '<span class="no-compare">직전 분기 없음</span>'
+            val_html    = f'{_fmt_value(cval)} {na}'
+            shares_html = f'{_fmt_shares(cshares)} {na}'
+        else:
+            if not pval:
+                n_new += 1
+                cat = tag = 'new'
+            elif (cshares or 0) > (pshares or 0):
+                n_buy += 1
+                cat, tag = 'buy', None
+            elif (cshares or 0) < (pshares or 0):
+                n_sell += 1
+                cat, tag = 'sell', None
+            else:
+                n_hold += 1
+                cat, tag = 'hold', None
+            val_html    = change_html_value(cval, pval)
+            shares_html = change_html_shares(cshares, pshares)
+
+        holders.append({
+            'institution':    institution,
+            'institution_ko': kr_names.get(cik, ''),
+            'cik':            cik,
+            'value':          cval or 0,
+            'cat':            cat,
+            'tag':            tag,
+            'val_html':       val_html,
+            'shares_html':    shares_html,
+        })
+
+    # 현재 보유 기관만 평가금액순으로 순위 부여, 전량 매도 기관은 뒤에 배치(순위 없음)
+    current  = [h for h in holders if h['cat'] != 'full_sell']
+    sold_out = [h for h in holders if h['cat'] == 'full_sell']
+    current.sort(key=lambda h: -h['value'])
+    for i, h in enumerate(current, 1):
+        h['rank'] = i
+    for h in sold_out:
+        h['rank'] = None
+    holders = current + sold_out
+
+    cons_vm = None
+    if cons:
+        comp_rank, comp_score, inst_rank, inst_cnt, buy_rank, buy_amt, weight_rank, weight_chg = cons
+        cons_vm = {
+            'composite_rank':  comp_rank,
+            'composite_score': f"{comp_score:.1f}",
+            'inst_rank':       inst_rank,
+            'inst_count':      inst_cnt,
+            'buy_rank':        buy_rank,
+            'buy_amount':      _fmt_value(buy_amt),
+            'weight_rank':     weight_rank,
+            'weight_change':   f"{weight_chg*100:.4f}%",
+        }
+
+    return render_template('stock.html',
+        found=True,
+        cusip=cusip,
+        ticker=ticker,
+        company_name=company_name,
+        holders_count=len(current),
+        n_new=n_new,
+        n_buy=n_buy,
+        n_sell=n_sell,
+        n_hold=n_hold,
+        n_full_sell=n_full_sell,
+        n_new_inst=n_new_inst,
+        holders=holders,
+        consensus=cons_vm,
+        latest_label=quarter_label(curr_date),
+        prev_label=quarter_label(prev_date),
+    )
 
 
 if __name__ == "__main__":

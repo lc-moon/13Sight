@@ -118,7 +118,7 @@
 
     <div class="search-wrap">
       <input class="search-input" id="searchInput" type="text"
-             placeholder="기관명 또는 CIK 검색" autocomplete="off">
+             placeholder="기관명·종목·티커 검색" autocomplete="off">
       <div class="search-dropdown" id="searchDropdown"></div>
     </div>
 
@@ -158,6 +158,7 @@
               <td>
                 <div class="td-name">
                   <a href="/institution/{{ row.cik }}">{{ row.institution }}</a>
+                  {% if row.is_new_report %}<span class="new-report-badge">신규 보고</span>{% endif %}
                 </div>
                 {% if row.institution_ko %}
                 <div class="td-name-sub">{{ row.institution_ko }}</div>
@@ -193,7 +194,14 @@
         .then(function (r) { return r.json(); })
         .then(function (results) {
           if (!results.length) { close(); return; }
-          dropdown.innerHTML = results.slice(0, 6).map(function (r) {
+          dropdown.innerHTML = results.slice(0, 10).map(function (r) {
+            if (r.type === 'stock') {
+              return '<div class="search-item" onclick="location.href=\'/stock/' + r.cusip + '\'">' +
+                (r.ticker ? '<span class="ticker">' + r.ticker + '</span>' : '') +
+                '<span class="search-item-name">' + r.company_name + '</span>' +
+                '<span class="search-item-cik">종목</span>' +
+                '</div>';
+            }
             return '<div class="search-item" onclick="location.href=\'/institution/' + r.cik + '\'">' +
               '<span class="search-item-name">' + r.institution + '</span>' +
               (r.institution_ko ? '<span class="search-item-ko">' + r.institution_ko + '</span>' : '') +

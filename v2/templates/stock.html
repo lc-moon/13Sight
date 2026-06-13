@@ -1,0 +1,280 @@
+{% extends "base.html" %}
+{% block title %}{{ ticker or company_name or cusip }} · 13Sight{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Stock header ── */
+  .stock-header {
+    padding: var(--space-xl) 0 var(--space-lg);
+    border-bottom: 1px solid var(--color-hairline);
+    margin-bottom: var(--space-xl);
+  }
+  .stock-title-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .stock-company {
+    font-size: var(--fs-display-md); font-weight: var(--fw-semibold);
+    line-height: var(--lh-display-md); letter-spacing: var(--ls-display-md);
+    color: var(--color-ink);
+  }
+  .stock-ticker-badge {
+    font-size: 14px; padding: 4px 10px;
+    background: var(--color-ink); color: var(--color-on-primary);
+    border-color: var(--color-ink);
+  }
+  .stock-meta-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: var(--space-sm);
+  }
+  .stock-meta-cik {
+    font-family: var(--font-mono); font-size: var(--fs-code);
+    color: var(--color-mute);
+    background: var(--color-canvas-soft-2);
+    padding: 2px 8px; border-radius: var(--radius-xs);
+  }
+  .stock-meta-sep { color: var(--color-hairline-strong); }
+  .stock-meta-item { font-size: var(--fs-body-sm); color: var(--color-body); }
+  .stock-meta-item strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
+
+  /* ── Summary stats ── */
+  .stock-stats {
+    display: flex; gap: var(--space-sm); flex-wrap: wrap;
+    margin-bottom: var(--space-xl);
+  }
+  .stat-box {
+    flex: 1; min-width: 96px;
+    background: var(--color-canvas); border-radius: var(--radius-md);
+    box-shadow: var(--elevation-2); padding: 14px 16px;
+  }
+  .stat-label {
+    font-size: var(--fs-caption); color: var(--color-mute); margin-bottom: 4px;
+  }
+  .stat-value {
+    font-size: var(--fs-display-sm); font-weight: var(--fw-semibold);
+    line-height: 1.1;
+  }
+  .stat-up   { color: var(--color-up); }
+  .stat-down { color: var(--color-down); }
+
+  /* ── Consensus card ── */
+  .cons-card {
+    background: var(--color-canvas); border-radius: var(--radius-md);
+    box-shadow: var(--elevation-2);
+    padding: var(--space-xl); margin-bottom: var(--space-xl);
+  }
+  .cons-caption {
+    font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-medium);
+    color: var(--color-mute); text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: var(--space-md);
+  }
+  .cons-top { display: flex; align-items: baseline; gap: var(--space-md); margin-bottom: var(--space-md); }
+  .cons-score {
+    font-size: var(--fs-display-lg); font-weight: var(--fw-semibold);
+    letter-spacing: var(--ls-display-lg); color: var(--color-ink); line-height: 1.1;
+  }
+  .cons-rank { font-size: var(--fs-body-sm); color: var(--color-body); }
+  .cons-rank strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
+  .cons-bar { width: 100%; height: 6px; background: var(--color-canvas-soft-2); border-radius: 3px; overflow: hidden; margin-bottom: var(--space-lg); }
+  .cons-fill { height: 100%; background: linear-gradient(to right, #00C8B4, #007CF0, #7828C8); border-radius: 3px; }
+  .cons-metrics { display: flex; gap: var(--space-xl); }
+  .cons-metric { flex: 1; }
+  .cons-metric-label { font-size: var(--fs-caption); color: var(--color-mute); margin-bottom: 2px; }
+  .cons-metric-value { font-size: var(--fs-body-lg); font-weight: var(--fw-medium); color: var(--color-ink); }
+  .cons-metric-rank { font-size: var(--fs-code); color: var(--color-body); margin-top: 2px; }
+
+  .holdings-section { padding-bottom: var(--space-5xl); }
+  .stock-table-name a { color: var(--color-ink); }
+  .stock-table-name a:hover { color: var(--color-link); text-decoration: underline; }
+  .change-new {
+    font-size: 10px; font-weight: var(--fw-medium);
+    background: var(--color-up-soft); color: var(--color-up-strong);
+    padding: 1px 6px; border-radius: var(--radius-xs);
+  }
+  .change-sell {
+    font-size: 10px; font-weight: var(--fw-medium);
+    background: var(--color-down-soft, #e8eefc); color: var(--color-down);
+    padding: 1px 6px; border-radius: var(--radius-xs); margin-left: 6px;
+  }
+
+  /* ── Filter-clickable stat boxes ── */
+  .stat-box[data-filter] {
+    cursor: pointer; user-select: none;
+    transition: box-shadow .12s, transform .12s;
+  }
+  .stat-box[data-filter]:hover { box-shadow: var(--elevation-4); transform: translateY(-1px); }
+  .stat-box[data-filter].active {
+    box-shadow: 0 0 0 2px var(--color-ink) inset, var(--elevation-2);
+  }
+  .filter-empty { margin: 0; border: none; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <div class="breadcrumb"><a href="/">← 목록으로</a></div>
+
+  {% if not found %}
+  <div class="no-data">해당 종목 데이터 없음 — 상위 100개 기관 중 이 종목(CUSIP {{ cusip }})을 보유한 기관이 없습니다.</div>
+  {% else %}
+
+  <!-- Stock header -->
+  <div class="stock-header">
+    <div class="stock-title-row">
+      <span class="stock-company">{{ company_name or ticker or cusip }}</span>
+      {% if ticker and company_name %}
+      <span class="ticker stock-ticker-badge">{{ ticker }}</span>
+      {% endif %}
+    </div>
+    <div class="stock-meta-row">
+      <span class="stock-meta-cik">CUSIP {{ cusip }}</span>
+      <span class="stock-meta-sep">·</span>
+      <span class="stock-meta-item"><strong>{{ latest_label }}</strong></span>
+      <span class="stock-meta-sep">·</span>
+      <span class="stock-meta-item">보유 기관 <strong>{{ holders_count }}개</strong></span>
+    </div>
+  </div>
+
+  <!-- Summary stats (클릭 시 보유 기관 표 필터링) -->
+  <div class="stock-stats">
+    <div class="stat-box" data-filter="all">
+      <div class="stat-label">보유 기관</div>
+      <div class="stat-value">{{ holders_count }}</div>
+    </div>
+    <div class="stat-box" data-filter="new">
+      <div class="stat-label">신규 매수</div>
+      <div class="stat-value stat-up">{{ n_new }}</div>
+    </div>
+    <div class="stat-box" data-filter="buy">
+      <div class="stat-label">매수 (수량↑)</div>
+      <div class="stat-value stat-up">{{ n_buy }}</div>
+    </div>
+    <div class="stat-box" data-filter="sell">
+      <div class="stat-label">매도 (수량↓)</div>
+      <div class="stat-value stat-down">{{ n_sell }}</div>
+    </div>
+    <div class="stat-box" data-filter="full_sell">
+      <div class="stat-label">전량 매도</div>
+      <div class="stat-value stat-down">{{ n_full_sell }}</div>
+    </div>
+    <div class="stat-box" data-filter="hold">
+      <div class="stat-label">변동 없음</div>
+      <div class="stat-value" style="color:var(--color-mute)">{{ n_hold }}</div>
+    </div>
+    {% if n_new_inst %}
+    <div class="stat-box" data-filter="new_inst">
+      <div class="stat-label">신규 보고 기관</div>
+      <div class="stat-value" style="color:var(--color-mute)">{{ n_new_inst }}</div>
+    </div>
+    {% endif %}
+  </div>
+
+  <!-- Consensus score -->
+  {% if consensus %}
+  <div class="cons-card">
+    <div class="cons-caption">통합분석 점수</div>
+    <div class="cons-top">
+      <div class="cons-score">{{ consensus.composite_score }}</div>
+      {% if consensus.composite_rank %}
+      <div class="cons-rank">종합 <strong>{{ consensus.composite_rank }}위</strong></div>
+      {% endif %}
+    </div>
+    <div class="cons-bar">
+      <div class="cons-fill" style="width: {{ consensus.composite_score }}%"></div>
+    </div>
+    <div class="cons-metrics">
+      <div class="cons-metric">
+        <div class="cons-metric-label">매수 기관 수</div>
+        <div class="cons-metric-value">{{ consensus.inst_count }}</div>
+        {% if consensus.inst_rank %}<div class="cons-metric-rank">{{ consensus.inst_rank }}위</div>{% endif %}
+      </div>
+      <div class="cons-metric">
+        <div class="cons-metric-label">총 매수 금액</div>
+        <div class="cons-metric-value">{{ consensus.buy_amount }}</div>
+        {% if consensus.buy_rank %}<div class="cons-metric-rank">{{ consensus.buy_rank }}위</div>{% endif %}
+      </div>
+      <div class="cons-metric">
+        <div class="cons-metric-label">비중 변화 합산</div>
+        <div class="cons-metric-value">{{ consensus.weight_change }}</div>
+        {% if consensus.weight_rank %}<div class="cons-metric-rank">{{ consensus.weight_rank }}위</div>{% endif %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Holders table -->
+  <div class="holdings-section">
+    {% if holders %}
+    <div class="section-head">
+      <div class="section-title">보유 기관 (<span id="holdersLabel">{{ latest_label }}</span>)</div>
+      <div class="section-meta">전분기 대비 변동</div>
+    </div>
+    <div class="card">
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:60px;text-align:right">순위</th>
+              <th>기관명</th>
+              <th class="num">평가금액 / 변화</th>
+              <th class="num">보유수량 / 변화</th>
+            </tr>
+          </thead>
+          <tbody id="holdersBody">
+            {% for h in holders %}
+            <tr data-cat="{{ h.cat }}">
+              <td class="td-rank">{{ h.rank or '—' }}</td>
+              <td>
+                <div class="td-name stock-table-name">
+                  <a href="/institution/{{ h.cik }}">{{ h.institution }}</a>
+                  {% if h.tag == 'new' %}<span class="change-new" style="margin-left:6px">신규</span>
+                  {% elif h.tag == 'new_inst' %}<span class="new-report-badge">신규 보고</span>
+                  {% elif h.tag == 'full_sell' %}<span class="change-sell">전량 매도</span>{% endif %}
+                </div>
+                {% if h.institution_ko %}
+                <div class="td-name-sub">{{ h.institution_ko }}</div>
+                {% endif %}
+              </td>
+              <td class="td-num">{{ h.val_html | safe }}</td>
+              <td class="td-num">{{ h.shares_html | safe }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="no-data filter-empty" id="filterEmpty" style="display:none">해당하는 기관이 없습니다.</div>
+    </div>
+    {% else %}
+    <div class="no-data">현재 분기에 이 종목을 보유한 기관이 없습니다.</div>
+    {% endif %}
+  </div>
+
+  {% endif %}
+</div>
+
+<script>
+(function () {
+  var boxes = Array.prototype.slice.call(document.querySelectorAll('.stat-box[data-filter]'));
+  var body  = document.getElementById('holdersBody');
+  if (!boxes.length || !body) return;
+  var rows  = Array.prototype.slice.call(body.querySelectorAll('tr'));
+  var empty = document.getElementById('filterEmpty');
+
+  function apply(f) {
+    var shown = 0;
+    rows.forEach(function (r) {
+      var cat = r.getAttribute('data-cat');
+      var show = (f === 'all') ? (cat !== 'full_sell') : (cat === f);
+      r.style.display = show ? '' : 'none';
+      if (show) shown++;
+    });
+    boxes.forEach(function (b) {
+      b.classList.toggle('active', b.getAttribute('data-filter') === f);
+    });
+    if (empty) empty.style.display = shown ? 'none' : 'block';
+  }
+
+  boxes.forEach(function (b) {
+    b.addEventListener('click', function () { apply(b.getAttribute('data-filter')); });
+  });
+  apply('all');
+})();
+</script>
+{% endblock %}
