@@ -1,0 +1,222 @@
+{% extends "base.html" %}
+{% block title %}{{ institution or cik_display }} · 13Sight{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Institution header ── */
+  .inst-header {
+    padding: var(--space-xl) 0 var(--space-lg);
+    border-bottom: 1px solid var(--color-hairline);
+    margin-bottom: var(--space-xl);
+  }
+  .inst-name-en {
+    font-size: var(--fs-display-md); font-weight: var(--fw-semibold);
+    line-height: var(--lh-display-md); letter-spacing: var(--ls-display-md);
+    color: var(--color-ink);
+  }
+  .inst-name-kr {
+    font-size: var(--fs-body-sm); color: var(--color-body); margin-top: 4px;
+  }
+  .inst-meta-row {
+    display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+    margin-top: var(--space-sm);
+  }
+  .inst-meta-cik {
+    font-family: var(--font-mono); font-size: var(--fs-code);
+    color: var(--color-mute);
+    background: var(--color-canvas-soft-2);
+    padding: 2px 8px; border-radius: var(--radius-xs);
+  }
+  .inst-meta-sep { color: var(--color-hairline-strong); }
+  .inst-meta-item { font-size: var(--fs-body-sm); color: var(--color-body); }
+  .inst-meta-item strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
+
+  /* ── AUM card ── */
+  .aum-card {
+    display: flex; gap: var(--space-xl); align-items: flex-start;
+    background: var(--color-canvas); border-radius: var(--radius-md);
+    box-shadow: var(--elevation-2);
+    padding: var(--space-xl);
+    margin-bottom: var(--space-xl);
+  }
+  .aum-left { flex: 1; }
+  .aum-caption {
+    font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-medium);
+    color: var(--color-mute); text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: var(--space-xs);
+  }
+  .aum-value {
+    font-size: var(--fs-display-lg); font-weight: var(--fw-semibold);
+    letter-spacing: var(--ls-display-lg); color: var(--color-ink);
+    line-height: 1.1;
+  }
+  .aum-delta { margin-top: var(--space-xs); font-size: var(--fs-body-sm); }
+
+  /* Bar chart */
+  .aum-chart {
+    display: flex; align-items: flex-end; gap: var(--space-sm);
+    height: 80px;
+  }
+  .bar-col {
+    display: flex; flex-direction: column; align-items: center;
+    gap: 6px; width: 56px;
+  }
+  .bar-wrap {
+    display: flex; align-items: flex-end; height: 60px; width: 100%;
+  }
+  .bar {
+    width: 100%; border-radius: var(--radius-xs) var(--radius-xs) 0 0;
+    position: relative; min-height: 4px;
+    display: flex; align-items: flex-start; justify-content: center;
+  }
+  .bar-prev { background: #c8ccd2; }
+  .bar-curr { background: var(--color-ink); } /* fallback; overridden inline by aum_direction */
+  .bar-value {
+    position: absolute; top: -20px;
+    font-size: 10px; font-weight: var(--fw-medium); color: var(--color-body);
+    white-space: nowrap;
+  }
+  .bar-label { font-size: 10px; color: var(--color-mute); text-align: center; white-space: nowrap; }
+
+  /* ── Holdings table ── */
+  .holdings-section { padding-bottom: var(--space-5xl); }
+
+  /* Change delta in holdings */
+  .change-up   { color: var(--color-up);   font-size: var(--fs-caption); font-weight: var(--fw-medium); }
+  .change-down { color: var(--color-down); font-size: var(--fs-caption); font-weight: var(--fw-medium); }
+  .change-new  {
+    font-size: 10px; font-weight: var(--fw-medium);
+    background: var(--color-up-soft); color: var(--color-up-strong);
+    padding: 1px 6px; border-radius: var(--radius-xs);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-container">
+  <div class="breadcrumb"><a href="/">← 목록으로</a></div>
+
+  <!-- Institution header -->
+  <div class="inst-header">
+    <div class="inst-name-en">{{ institution or cik_display }}</div>
+    {% if institution_ko %}
+    <div class="inst-name-kr">{{ institution_ko }}</div>
+    {% endif %}
+    <div class="inst-meta-row">
+      <span class="inst-meta-cik">{{ cik_display }}</span>
+      {% if rank %}
+      <span class="inst-meta-sep">·</span>
+      <span class="inst-meta-item">100대 기관 중 <strong>{{ rank }}위</strong></span>
+      {% endif %}
+      {% if latest_label %}
+      <span class="inst-meta-sep">·</span>
+      <span class="inst-meta-item"><strong>{{ latest_label }}</strong></span>
+      {% endif %}
+      {% if holdings_count %}
+      <span class="inst-meta-sep">·</span>
+      <span class="inst-meta-item">보유 종목 <strong>{{ holdings_count }}개</strong></span>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- AUM card -->
+  {% if aum_current != '-' %}
+  <div class="aum-card">
+    <div class="aum-left">
+      <div class="aum-caption">현재 운용금액 (AUM)</div>
+      <div class="aum-value">{{ aum_current }}</div>
+      {% if aum_delta_html %}
+      <div class="aum-delta">{{ aum_delta_html | safe }}</div>
+      {% endif %}
+    </div>
+    <div class="aum-chart">
+      {% if aum_prev != '-' %}
+      <div class="bar-col">
+        <div class="bar-wrap">
+          <div class="bar bar-prev" style="height: {{ aum_prev_pct }}%">
+            <span class="bar-value">{{ aum_prev }}</span>
+          </div>
+        </div>
+        <span class="bar-label">{{ prev_label }}</span>
+      </div>
+      {% endif %}
+      <div class="bar-col">
+        <div class="bar-wrap">
+          <div class="bar bar-curr" style="height: {{ aum_curr_pct }}%; background: {% if aum_direction == 'up' %}var(--color-up){% elif aum_direction == 'down' %}var(--color-down){% else %}#3d4148{% endif %}">
+            <span class="bar-value">{{ aum_current }}</span>
+          </div>
+        </div>
+        <span class="bar-label">{{ latest_label }}</span>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Holdings -->
+  <div class="holdings-section">
+    {% if not has_dates %}
+    <div class="no-data">데이터 없음 — collect_holdings.py를 먼저 실행하세요.</div>
+    {% else %}
+
+    <nav class="tabs">
+      {% for t in tabs %}
+        {% if t.active %}
+        <span class="tab active">{{ t.label }}</span>
+        {% else %}
+        <a class="tab" href="/institution/{{ cik_display }}?tab={{ t.key }}">{{ t.label }}</a>
+        {% endif %}
+      {% endfor %}
+    </nav>
+
+    {% if display_rows %}
+    <div class="meta-row">
+      <span class="meta-pill is-base">
+        <span class="meta-dot"></span>
+        <span class="meta-label">기준 분기</span>
+        <span class="meta-value">{{ latest_label }}</span>
+      </span>
+      <span class="meta-pill is-prev">
+        <span class="meta-dot"></span>
+        <span class="meta-label">비교 분기</span>
+        <span class="meta-value">{{ prev_label }}</span>
+      </span>
+    </div>
+
+    <div class="card">
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:60px;text-align:right">순위</th>
+              <th style="width:100px">티커</th>
+              <th>종목명</th>
+              <th class="num">평가금액 / 변화</th>
+              <th class="num">보유수량 / 변화</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in display_rows %}
+            <tr>
+              <td class="td-rank">{{ row.rank }}</td>
+              <td>
+                {% if row.ticker %}
+                <span class="ticker">{{ row.ticker }}</span>
+                {% else %}
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--color-mute)">{{ row.cusip }}</span>
+                {% endif %}
+              </td>
+              <td class="td-name">{{ row.company_name }}</td>
+              <td class="td-num">{{ row.val_html | safe }}</td>
+              <td class="td-num">{{ row.shares_html | safe }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% endif %}
+
+    {% endif %}
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,218 @@
+{% extends "base.html" %}
+{% block title %}13Sight{% endblock %}
+{% block nav_home %}active{% endblock %}
+
+{% block extra_head %}
+<style>
+  /* ── Hero ── */
+  .hero {
+    position: relative; overflow: hidden;
+    background: var(--color-canvas);
+  }
+  .hero-mesh {
+    position: absolute; inset: 0;
+    background: var(--brand-mesh);
+    opacity: 0.9;
+  }
+  .hero-fade {
+    position: absolute; inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(255,255,255,0.55) 0%,
+      rgba(255,255,255,0.90) 62%,
+      #fff 100%
+    );
+  }
+  .hero-body {
+    position: relative;
+    max-width: 720px; margin: 0 auto;
+    padding: var(--space-5xl) var(--gutter) var(--space-4xl);
+    text-align: center;
+  }
+  .hero-label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-family: var(--font-sans); font-size: var(--fs-caption);
+    font-weight: var(--fw-medium);
+    background: rgba(255,255,255,0.88); color: var(--color-body);
+    border: 1px solid rgba(0,0,0,0.10);
+    padding: 4px 12px; border-radius: var(--radius-pill);
+    margin-bottom: var(--space-lg);
+  }
+  .hero-h1 {
+    font-size: var(--fs-display-xl); font-weight: var(--fw-semibold);
+    line-height: var(--lh-display-xl); letter-spacing: var(--ls-display-xl);
+    color: var(--color-ink); margin-bottom: var(--space-md);
+  }
+  .hero-desc {
+    font-size: var(--fs-body-lg); line-height: var(--lh-body-lg);
+    color: var(--color-body);
+    max-width: 520px; margin: 0 auto var(--space-2xl);
+  }
+
+  /* ── Search ── */
+  .search-wrap { position: relative; max-width: 480px; margin: 0 auto; }
+  .search-input {
+    width: 100%; height: var(--form-height-lg);
+    padding: 0 16px;
+    font-family: var(--font-sans); font-size: var(--fs-body-sm);
+    color: var(--color-ink); background: var(--color-canvas);
+    border: none; border-radius: var(--radius-md);
+    box-shadow: var(--elevation-4);
+    outline: none; transition: box-shadow .15s;
+  }
+  .search-input:focus { box-shadow: var(--elevation-4), var(--focus-ring); }
+  .search-input::placeholder { color: var(--color-mute); }
+  .search-dropdown {
+    display: none;
+    position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 10;
+    background: var(--color-canvas); border-radius: var(--radius-md);
+    box-shadow: var(--elevation-5); overflow: hidden; text-align: left;
+  }
+  .search-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 16px;
+    cursor: pointer; transition: background .1s;
+  }
+  .search-item:hover { background: var(--color-canvas-soft); }
+  .search-item-name { font-size: var(--fs-body-sm); font-weight: var(--fw-medium); color: var(--color-ink); }
+  .search-item-ko   { font-size: var(--fs-code); color: var(--color-body); }
+  .search-item-cik  {
+    margin-left: auto; font-family: var(--font-mono);
+    font-size: var(--fs-caption); color: var(--color-mute);
+  }
+
+  /* ── CTA card ── */
+  .cta-card {
+    display: flex; align-items: center; gap: var(--space-md);
+    max-width: 480px; margin: var(--space-md) auto 0;
+    padding: 14px 20px;
+    background: var(--color-canvas); border-radius: var(--radius-md);
+    box-shadow: var(--elevation-2);
+    transition: box-shadow .15s;
+  }
+  .cta-card:hover { box-shadow: var(--elevation-4); }
+  .cta-card-body { flex: 1; text-align: left; }
+  .cta-card-title { font-size: var(--fs-body-sm); font-weight: var(--fw-semibold); color: var(--color-ink); }
+  .cta-card-desc  { font-size: var(--fs-code); color: var(--color-body); margin-top: 2px; }
+  .cta-card-arrow { color: var(--color-link); font-size: 18px; }
+
+  /* ── AUM section ── */
+  .aum-section { padding: var(--space-4xl) 0 var(--space-5xl); }
+
+  /* ── Row link style ── */
+  .row-link td { cursor: pointer; }
+  .row-link .td-name a { color: var(--color-ink); }
+  .row-link:hover .td-name a { color: var(--color-link); }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<section class="hero">
+  <div class="hero-mesh"></div>
+  <div class="hero-fade"></div>
+  <div class="hero-body">
+    <div class="hero-label">13F &nbsp;·&nbsp; {{ quarter }}</div>
+    <h1 class="hero-h1">기관이 무엇을 사는지,<br>가장 선명하게.</h1>
+    <p class="hero-desc">상위 100개 기관 투자자의 13F 포트폴리오를 분기마다 추적하고, 그들이 공통으로 매수한 종목을 분석합니다.</p>
+
+    <div class="search-wrap">
+      <input class="search-input" id="searchInput" type="text"
+             placeholder="기관명 또는 CIK 검색" autocomplete="off">
+      <div class="search-dropdown" id="searchDropdown"></div>
+    </div>
+
+    <a class="cta-card" href="/consensus">
+      <div class="cta-card-body">
+        <div class="cta-card-title">통합분석</div>
+        <div class="cta-card-desc">상위 100개 기관이 공통 매수한 종목 순위</div>
+      </div>
+      <span class="cta-card-arrow">→</span>
+    </a>
+  </div>
+</section>
+
+<!-- AUM ranking -->
+<div class="page-container">
+  <section class="aum-section">
+    <div class="section-head">
+      <div class="section-title">운용금액(AUM) 상위 100개 기관</div>
+      <div class="section-meta">전분기 대비 변동 · {{ quarter or '2025 Q4' }}</div>
+    </div>
+    <div class="card">
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th style="width:60px;text-align:right">순위</th>
+              <th style="width:130px">CIK</th>
+              <th>기관명</th>
+              <th class="num">운용금액 (AUM) / 전분기 대비</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr class="row-link" onclick="location.href='/institution/{{ row.cik }}'">
+              <td class="td-rank">{{ row.rank }}</td>
+              <td class="td-mono">{{ row.cik }}</td>
+              <td>
+                <div class="td-name">
+                  <a href="/institution/{{ row.cik }}">{{ row.institution }}</a>
+                </div>
+                {% if row.institution_ko %}
+                <div class="td-name-sub">{{ row.institution_ko }}</div>
+                {% endif %}
+              </td>
+              <td class="td-num">{{ row.aum_html | safe }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  var input    = document.getElementById('searchInput');
+  var dropdown = document.getElementById('searchDropdown');
+  var timer;
+
+  function close() {
+    dropdown.style.display = 'none';
+    dropdown.innerHTML = '';
+  }
+
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if (!q) { close(); return; }
+    timer = setTimeout(function () {
+      fetch('/api/search?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(function (results) {
+          if (!results.length) { close(); return; }
+          dropdown.innerHTML = results.slice(0, 6).map(function (r) {
+            return '<div class="search-item" onclick="location.href=\'/institution/' + r.cik + '\'">' +
+              '<span class="search-item-name">' + r.institution + '</span>' +
+              (r.institution_ko ? '<span class="search-item-ko">' + r.institution_ko + '</span>' : '') +
+              '<span class="search-item-cik">' + r.cik + '</span>' +
+              '</div>';
+          }).join('');
+          dropdown.style.display = 'block';
+        })
+        .catch(close);
+    }, 160);
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!input.contains(e.target) && !dropdown.contains(e.target)) close();
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') close();
+  });
+})();
+</script>
+{% endblock %}
