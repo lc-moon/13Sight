@@ -41,6 +41,10 @@ def create_holdings_table(conn) -> None:
                     ON holdings (cik, cusip, accession_number)
                 """
             )
+            # 종목→보유기관 역방향 조회(/stock/<cusip>)용 인덱스
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS holdings_cusip_idx ON holdings (cusip)"
+            )
             # 기존 테이블 컬럼 크기 마이그레이션
             cur.execute(
                 "ALTER TABLE holdings ALTER COLUMN ticker TYPE VARCHAR(50)"
@@ -258,6 +262,71 @@ def save_holdings(conn, cik: str, accession: str, report_date: str, rows: list, 
     return len(records)
 
 
+def normalize_variant_cusips(conn) -> int:
+    """잘못 신고된 90X/95X CUSIP 변종을 정본(10X)으로 통합한다.
+
+    일부 기관이 같은 종목을 7~8번째 자리만 90/95로 바꾼 비정상 CUSIP으로 신고해
+    동일 종목이 여러 CUSIP으로 쪼개진다(예: NVIDIA 67066G104 ↔ 67066G904/954).
+    정본 10X 짝이 holdings에 존재하는 변종만 정본으로 재지정하고 value·shares를
+    합산한다. 정본 짝이 없는 변종(전부 ticker 없음)은 그대로 둔다.
+    반환값: 통합된 변종 행 수.
+    """
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT DISTINCT cusip FROM holdings WHERE cusip IS NOT NULL")
+            all_cusips = {r[0] for r in cur.fetchall()}
+
+            # 정본(10X) 짝이 실제로 존재하는 변종만 매핑
+            mapping = {
+                c: c[:6] + "10" + c[8]
+                for c in all_cusips
+                if len(c) == 9 and c[6:8] in ("90", "95") and (c[:6] + "10" + c[8]) in all_cusips
+            }
+            if not mapping:
+                return 0
+
+            variants = list(mapping.keys())
+            cur.execute(
+                """
+                SELECT cik, accession_number, cusip, company_name, value, shares, report_date
+                FROM holdings WHERE cusip = ANY(%s)
+                """,
+                (variants,),
+            )
+            variant_rows = cur.fetchall()
+
+            # (cik, 정본 cusip, accession) 기준으로 value·shares 합산
+            merged: dict = {}
+            for cik, acc, cusip, name, value, shares, rdate in variant_rows:
+                key = (cik, mapping[cusip], acc)
+                if key not in merged:
+                    merged[key] = [name, 0, 0, rdate]
+                merged[key][1] += value  or 0
+                merged[key][2] += shares or 0
+
+            cur.execute("DELETE FROM holdings WHERE cusip = ANY(%s)", (variants,))
+
+            # 정본 행이 있으면 누적, 없으면 신규 삽입. ticker는 정본 것 유지(건드리지 않음)
+            records = [
+                (cik, acc, name, canon, value, shares, rdate)
+                for (cik, canon, acc), (name, value, shares, rdate) in merged.items()
+            ]
+            execute_values(
+                cur,
+                """
+                INSERT INTO holdings
+                    (cik, accession_number, company_name, cusip, value, shares, report_date)
+                VALUES %s
+                ON CONFLICT (cik, cusip, accession_number)
+                DO UPDATE SET
+                    value  = holdings.value  + EXCLUDED.value,
+                    shares = holdings.shares + EXCLUDED.shares
+                """,
+                records,
+            )
+    return len(variant_rows)
+
+
 def main() -> None:
     """상위 100개 기관의 현재·직전 분기 13F 보유 종목을 수집해 DB에 저장한다."""
     session = sec_session()
@@ -309,6 +378,10 @@ def main() -> None:
             deleted = cur.rowcount
     if deleted:
         print(f"이전 분기 데이터 {deleted}행 삭제 완료")
+
+    merged = normalize_variant_cusips(conn)
+    if merged:
+        print(f"90X/95X 변종 CUSIP {merged}행을 정본으로 통합 완료")
 
     conn.close()
     print("\n완료.")

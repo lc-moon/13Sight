@@ -63,10 +63,9 @@ def fetch_search_results(q: str) -> list:
             cur.execute(
                 """
                 SELECT cik, institution
-                FROM all_institutions
-                WHERE report_date = (SELECT MAX(report_date) FROM all_institutions)
-                  AND (institution ILIKE %s OR cik::text LIKE %s OR cik::text LIKE %s)
-                ORDER BY amount_usd DESC
+                FROM top100_institutions
+                WHERE institution ILIKE %s OR cik::text LIKE %s OR cik::text LIKE %s
+                ORDER BY curr_amount_usd DESC
                 LIMIT 10
                 """,
                 (f"%{q}%", f"%{q}%", f"%{q_stripped}%"),
@@ -249,6 +248,9 @@ def fetch_stock_search(q: str) -> list:
                   AND value > 0 AND cusip != '000000000'
                   AND (ticker ILIKE %s OR company_name ILIKE %s)
                 GROUP BY cusip
+                -- 90/95 오신고 변종(전부 ticker 없음·실재하지 않는 번호)은 검색에서 숨긴다.
+                -- 일반형식 무티커 종목(CSG 등 실재 종목)은 그대로 유지된다.
+                HAVING NOT (MAX(ticker) IS NULL AND substring(cusip FROM 7 FOR 2) IN ('90', '95'))
                 ORDER BY MAX(value) DESC
                 LIMIT 6
                 """,

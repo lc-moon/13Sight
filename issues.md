@@ -69,7 +69,7 @@ EDGAR가 schemaVersion을 자동 삽입하므로 filer가 단위를 잘못 기�
 | 57위 | Vanguard Global Advisers, LLC |
 
 ### 조치
-`prev_amount_usd = NULL`인 기관을 웹 UI에서 "신규 진입" 태그로 표시.
+`prev_amount_usd = NULL`인 기관을 웹 UI에서 "신규 보고" 태그로 표시.
 `build_consensus.py`는 직전 분기 데이터가 없는 기관을 매수 판단에서 자동 제외.
 
 ---
@@ -94,3 +94,47 @@ EXCLUDED_CIKS: set = {
     "0001569395",  # Mirae Asset — BRK/A 오신고로 AUM 과대계상 (실제값의 ~1500배)
 }
 ```
+
+---
+
+## 4. 90X/95X CUSIP 변종 오신고로 인한 종목 파편화 [조치 완료 / 일부 잔존]
+
+### 현상
+동일 종목이 서로 다른 CUSIP으로 쪼개져 `holdings`에 저장됨.
+- NVIDIA: `67066G104`(정본, ticker NVDA) 외에 `67066G904`·`67066G954`
+- SPY: `78462F103`(정본, ticker SPY) 외에 `78462F953`·`78462F903`
+
+결과적으로:
+- 검색 시 같은 종목이 여러 건 중복 노출
+- `/stock/<cusip>` 보유 기관이 변종별로 쪼개짐
+- consensus 집계가 변종별로 분리되어 순위 오염 (가짜 SPY `78462F953`이 비중변화 **1위**, 진짜 SPY는 4위로 밀림)
+
+### 원인
+일부 기관이 13F에서 같은 종목을 CUSIP 7~8번째 자리만 `90` 또는 `95`로 바꾼 비정상 번호로 신고.
+이 변종 번호는 실재하지 않아 OpenFIGI 조회가 실패하므로 ticker가 NULL이 됨 ("ticker 없음"이 곧 변종 신호).
+현재 분기 기준 전체 distinct CUSIP의 약 **37%(6,998/19,077)**가 이 패턴이었음.
+
+(13F 원본에는 ticker가 없고, `collect_holdings.py`가 CUSIP→OpenFIGI 조회로 ticker를 붙이는 구조라 발생.)
+
+### 조치 (`collect_holdings.py`: `normalize_variant_cusips`)
+변종 `XXXXXX{90|95}C` 중 정본 `XXXXXX10C`(체크숫자 `C` 동일)가 holdings에 **실제로 존재하는 경우에만**
+정본으로 재지정하고 `value`·`shares`를 합산. 정본 짝이 없는 변종(전부 ticker 없음)은 보존.
+`main()` 끝에서 자동 실행되어 향후 수집 시 자동 정규화됨.
+일회성 마이그레이션으로 기존 DB 변종 **26,165행 통합**(distinct CUSIP 20,373→14,749) 후 `build_consensus.py` 재실행.
+
+### 한계 (잔존)
+체크숫자가 정본과 다르거나 정본 `10X` 자체가 holdings에 없는 변종은 자동 병합되지 않음.
+- ALPHABET INC `02079K905/955` — 정본 후보 `02079K105`가 없고 실제는 GOOG `02079K107`/GOOGL `02079K305`(체크숫자 불일치로 자동 매핑 불가)
+- ISHARES TR `464287905/955` 등 — 공통 `10X`가 없는 펀드 패밀리
+
+이들은 검색 드롭다운에서 ticker 없는 중복으로 노출됨. consensus 상위 50위 내에는 없음(잘 보이는 영역은 영향 없음).
+
+### 검색 노출 차단 (`v2/app.py`: `fetch_stock_search`)
+병합되지 못한 잔존 변종을 검색에서 숨기는 필터 추가:
+```sql
+HAVING NOT (MAX(ticker) IS NULL AND substring(cusip FROM 7 FOR 2) IN ('90', '95'))
+```
+근거: 정상 종목 중 7~8번째 자리가 90/95인 CUSIP은 **0개**(전수 확인)이므로, ticker 없는 90/95만 숨기면
+정상 종목은 절대 누락되지 않음. CSG SYSTEMS(`126349109`)·VERIS RESIDENTIAL(`554489104`)처럼 일반형식이면서
+OpenFIGI 미해결로 ticker만 없는 정당한 종목은 그대로 노출됨(보유 기관 수 무관).
+보유 기관 수 임계값 방식도 가능하나, 보유 기관이 적은 일반형식 정당 종목까지 숨길 위험이 있어 패턴 기준을 채택.
