@@ -112,6 +112,34 @@
   .stock-link { color: var(--color-ink); }
   .stock-link:hover .ticker { background: var(--color-canvas-soft-2); }
   td.td-name .stock-link:hover { color: var(--color-link); text-decoration: underline; }
+
+  /* 거래 추정액 강조 컬럼 */
+  .th-trade, .td-trade { background: #fdf6ec; }
+  .th-trade { color: #854f0b; }
+  .th-trade-sub {
+    display: block; font-family: var(--font-sans);
+    font-size: 10px; font-weight: var(--fw-regular); color: #b07d2e;
+    margin-top: 2px;
+  }
+  .td-trade { font-weight: var(--fw-medium); }
+  .trade-note {
+    font-size: var(--fs-caption); color: var(--color-mute);
+    line-height: var(--lh-caption); max-width: 760px;
+    margin: var(--space-sm) 0 var(--space-md);
+  }
+
+  /* 보유 종목 검색 */
+  .holdings-toolbar { margin-bottom: 12px; }
+  .holdings-filter {
+    width: 100%; max-width: 320px; height: 38px; padding: 0 14px;
+    font-family: var(--font-sans); font-size: var(--fs-body-sm);
+    color: var(--color-ink); background: var(--color-canvas);
+    border: 1px solid var(--color-hairline-strong); border-radius: var(--radius-md);
+    outline: none;
+  }
+  .holdings-filter:focus { border-color: var(--color-link); }
+  .holdings-filter::placeholder { color: var(--color-mute); }
+  .filter-empty { margin: 0; border: none; }
 </style>
 {% endblock %}
 
@@ -247,6 +275,12 @@
         <span class="meta-value">{{ prev_label }}</span>
       </span>
     </div>
+    <p class="trade-note">거래 추정액은 직전 분기 대비 보유수량 증감에 기준 분기말 종가를 적용해 산출한 추정치입니다. 13F 보고서는 분기말 보유 현황만 공시할 뿐 실제 매매 체결 시점과 단가는 담고 있지 않으므로, 분기 중 거래 시점에 따라 실제 거래대금과 차이가 있을 수 있습니다.</p>
+
+    <div class="holdings-toolbar">
+      <input type="text" id="holdingsFilter" class="holdings-filter"
+             placeholder="티커·종목명 검색" autocomplete="off">
+    </div>
 
     <div class="card">
       <div class="table-scroll">
@@ -257,12 +291,13 @@
               <th style="width:100px">티커</th>
               <th>종목명</th>
               <th class="num">평가금액 / 변화</th>
+              <th class="num th-trade">거래 추정액<span class="th-trade-sub">보유수량 변화 × 분기말 종가</span></th>
               <th class="num">보유수량 / 변화</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody id="holdingsBody">
             {% for row in display_rows %}
-            <tr>
+            <tr data-search="{{ row.ticker }} {{ row.company_name }} {{ row.cusip }}">
               <td class="td-rank">{{ row.rank }}</td>
               <td>
                 <a href="/stock/{{ row.cusip }}" class="stock-link">
@@ -275,16 +310,41 @@
               </td>
               <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a></td>
               <td class="td-num">{{ row.val_html | safe }}</td>
+              <td class="td-num td-trade">{{ row.trade_html | safe }}</td>
               <td class="td-num">{{ row.shares_html | safe }}</td>
             </tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
+      <div class="no-data filter-empty" id="filterEmpty" style="display:none">검색 결과가 없습니다.</div>
     </div>
     {% endif %}
 
     {% endif %}
   </div>
 </div>
+
+<script>
+// 티커·종목명 즉시 필터 (현재 탭에 로드된 보유 종목 한정)
+(function () {
+  var input = document.getElementById('holdingsFilter');
+  var body  = document.getElementById('holdingsBody');
+  if (!input || !body) return;
+  var rows  = Array.prototype.slice.call(body.querySelectorAll('tr'));
+  var empty = document.getElementById('filterEmpty');
+
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    var shown = 0;
+    rows.forEach(function (row) {
+      var hay = (row.getAttribute('data-search') || '').toLowerCase();
+      var show = hay.indexOf(q) !== -1;
+      row.style.display = show ? '' : 'none';
+      if (show) shown++;
+    });
+    if (empty) empty.style.display = shown ? 'none' : 'block';
+  });
+})();
+</script>
 {% endblock %}

@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import psycopg2
 from flask import Flask, request, jsonify, render_template
-from utils import DB_CONFIG, prev_quarter_date
+from utils import DB_CONFIG, prev_quarter_date, canonical_cusip, CUSIP_ALIAS, CUSIP_EVENT
 
 # institution_names_kr.json 은 프로젝트 루트에 있음
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -110,7 +110,11 @@ def fetch_holdings(cik: str, report_date=None) -> list:
                 """,
                 (cik, report_date),
             )
-            return cur.fetchall()
+            # 구 CUSIP을 정본으로 정규화해 분기 비교가 동일 종목으로 인식되게 한다.
+            return [
+                (cn, canonical_cusip(cusip), tk, val, sh, rd)
+                for cn, cusip, tk, val, sh, rd in cur.fetchall()
+            ]
     finally:
         conn.close()
 
@@ -204,6 +208,8 @@ def fetch_stock(cusip: str):
             if not curr_date:
                 return None
             prev_date = prev_quarter_date(curr_date)
+            # 직전 분기는 구 CUSIP(별칭)으로 신고됐을 수 있어 정본+구 CUSIP을 모두 매칭한다.
+            prev_cusips = [cusip] + [old for old, new in CUSIP_ALIAS.items() if new == cusip]
             cur.execute(
                 """
                 SELECT t.institution, t.cik,
@@ -215,12 +221,12 @@ def fetch_stock(cusip: str):
                 FROM top100_institutions t
                 LEFT JOIN holdings hc ON hc.cik = t.cik AND hc.cusip = %s
                                       AND hc.report_date = %s AND hc.value > 0
-                LEFT JOIN holdings hp ON hp.cik = t.cik AND hp.cusip = %s
+                LEFT JOIN holdings hp ON hp.cik = t.cik AND hp.cusip = ANY(%s)
                                       AND hp.report_date = %s AND hp.value > 0
                 WHERE hc.cik IS NOT NULL OR hp.cik IS NOT NULL
                 ORDER BY hc.value DESC NULLS LAST
                 """,
-                (cusip, curr_date, cusip, prev_date),
+                (cusip, curr_date, prev_cusips, prev_date),
             )
             rows = cur.fetchall()
             cur.execute(
@@ -352,6 +358,25 @@ def change_html_shares(current, previous) -> str:
     return base
 
 
+def trade_amount_html(value, shares, prev_shares) -> str:
+    """이번 분기 추정 매매금액 = Δ수량 × 기준 분기말 종가(value/shares).
+    실제 체결가는 13F에 없어 분기말 종가로 환산한 추정치. 매수=빨강 ▲, 매도=파랑 ▼."""
+    if not value or not shares:
+        return "—"
+    if prev_shares is None:          # 신규 매수: 전량 신규 취득
+        amount = value
+    else:
+        delta = shares - prev_shares
+        if delta == 0:
+            return "—"
+        amount = round(value * delta / shares)
+    if amount > 0:
+        return f'<span style="color:{_COLOR_UP}">▲ +{_fmt_value(amount)}</span>'
+    if amount < 0:
+        return f'<span style="color:{_COLOR_DOWN}">▼ -{_fmt_value(amount)}</span>'
+    return "—"
+
+
 # ── Treemap (포트폴리오 구성) ──────────────────────────────────────────────────
 
 # 증감 방향 → 사각형 색 (한국 주식 컨벤션: 신규/매수=빨강, 매도=파랑)
@@ -444,7 +469,7 @@ def build_treemap(latest_by_cusip, prev_by_cusip, no_prev,
 
     items = []
     for company_name, cusip, ticker, value, shares, _ in rows[:top_n]:
-        if no_prev:
+        if no_prev or cusip in CUSIP_EVENT:
             direction = "flat"
         elif cusip not in prev_by_cusip:
             direction = "new"
@@ -606,14 +631,16 @@ def institution_detail(cik):
         display = sorted(
             [(row, prev_by_cusip[row[1]], False)
              for row in latest_by_cusip.values()
-             if row[1] in prev_by_cusip and (row[4] or 0) > (prev_by_cusip[row[1]][4] or 0)],
+             if row[1] in prev_by_cusip and row[1] not in CUSIP_EVENT
+             and (row[4] or 0) > (prev_by_cusip[row[1]][4] or 0)],
             key=lambda x: -(x[0][3] or 0),
         )
     elif tab == "sell":
         display = sorted(
             [(row, prev_by_cusip[row[1]], False)
              for row in latest_by_cusip.values()
-             if row[1] in prev_by_cusip and (row[4] or 0) < (prev_by_cusip[row[1]][4] or 0)],
+             if row[1] in prev_by_cusip and row[1] not in CUSIP_EVENT
+             and (row[4] or 0) < (prev_by_cusip[row[1]][4] or 0)],
             key=lambda x: -(x[0][3] or 0),
         )
     elif tab == "new_buy":
@@ -635,20 +662,31 @@ def institution_detail(cik):
         if is_full_sell:
             val_html    = f'{_fmt_value(value)} <span style="color:{_COLOR_DOWN}">▼ -{_fmt_value(value)}</span>' if value else "-"
             shares_html = f'{_fmt_shares(shares)} <span style="color:{_COLOR_DOWN}">▼ -{_fmt_shares(shares)}</span>' if shares else "-"
+            # 전량 매도: 직전 보유 전량을 직전 분기말 종가로 매도
+            trade_html  = f'<span style="color:{_COLOR_DOWN}">▼ -{_fmt_value(value)}</span>' if value else "—"
+        elif cusip in CUSIP_EVENT and prev_row:
+            # 식별자 변경(ADR→보통주) 캐리오버: 환산비가 달라 변화 비교 불가.
+            label       = f'<span style="color:var(--color-mute)">{CUSIP_EVENT[cusip]}</span>'
+            val_html    = f'{_fmt_value(value)} {label}'
+            shares_html = _fmt_shares(shares)
+            trade_html  = label
         elif no_prev:
             val_html    = _fmt_value(value)
             shares_html = _fmt_shares(shares)
+            trade_html  = "—"   # 직전 분기 없음 → 매매 판단 불가
         else:
             prev_value  = prev_row[3] if prev_row else None
             prev_shares = prev_row[4] if prev_row else None
             val_html    = change_html_value(value, prev_value)
             shares_html = change_html_shares(shares, prev_shares)
+            trade_html  = trade_amount_html(value, shares, prev_shares)
         display_rows.append({
             'rank':         row_rank,
             'company_name': company_name,
             'cusip':        cusip,
             'ticker':       ticker or '-',
             'val_html':     val_html,
+            'trade_html':   trade_html,
             'shares_html':  shares_html,
         })
 
@@ -729,6 +767,7 @@ def consensus():
 
 @app.route("/stock/<cusip>")
 def stock_detail(cusip):
+    cusip = canonical_cusip(cusip)   # 구 CUSIP 링크는 정본으로 정규화
     data = fetch_stock(cusip)
     if not data:
         return render_template('stock.html', found=False, cusip=cusip)
@@ -737,10 +776,11 @@ def stock_detail(cusip):
     if not rows:
         return render_template('stock.html', found=False, cusip=cusip)
 
+    is_event = cusip in CUSIP_EVENT   # ADR→보통주 등 식별자 변경 종목
     kr_names = _load_kr_names()
     company_name = ticker = None
     holders = []
-    n_new = n_buy = n_sell = n_hold = n_full_sell = n_new_inst = 0
+    n_new = n_buy = n_sell = n_hold = n_full_sell = n_new_inst = n_event = 0
 
     for institution, cik, cval, cshares, pval, pshares, cname, tkr, inst_prev_aum in rows:
         company_name = company_name or cname
@@ -758,6 +798,8 @@ def stock_detail(cusip):
                 'tag':            'full_sell',
                 'val_html':       change_html_value(0, pval),
                 'shares_html':    change_html_shares(0, pshares),
+                # 전량 매도: 직전 보유 전량을 직전 분기말 종가로 매도
+                'trade_html':     f'<span style="color:{_COLOR_DOWN}">▼ -{_fmt_value(pval)}</span>' if pval else "—",
             })
             continue
 
@@ -770,6 +812,16 @@ def stock_detail(cusip):
             na = '<span class="no-compare">직전 분기 없음</span>'
             val_html    = f'{_fmt_value(cval)} {na}'
             shares_html = f'{_fmt_shares(cshares)} {na}'
+            trade_html  = "—"   # 직전 분기 없음 → 매매 판단 불가
+        elif is_event and pval:
+            # 식별자 변경(ADR→보통주) 캐리오버: 주식수 환산비가 달라 변화 비교 불가.
+            # 현재 스냅샷만 보이고 분기 델타·거래추정액은 기업 액션 라벨로 대체.
+            n_event += 1
+            cat = tag = 'event'
+            label       = f'<span style="color:var(--color-mute)">{CUSIP_EVENT[cusip]}</span>'
+            val_html    = f'{_fmt_value(cval)} {label}'
+            shares_html = _fmt_shares(cshares)
+            trade_html  = label
         else:
             if not pval:
                 n_new += 1
@@ -785,6 +837,7 @@ def stock_detail(cusip):
                 cat, tag = 'hold', None
             val_html    = change_html_value(cval, pval)
             shares_html = change_html_shares(cshares, pshares)
+            trade_html  = trade_amount_html(cval, cshares, pshares)
 
         holders.append({
             'institution':    institution,
@@ -794,6 +847,7 @@ def stock_detail(cusip):
             'cat':            cat,
             'tag':            tag,
             'val_html':       val_html,
+            'trade_html':     trade_html,
             'shares_html':    shares_html,
         })
 
@@ -849,6 +903,7 @@ def stock_detail(cusip):
         n_hold=n_hold,
         n_full_sell=n_full_sell,
         n_new_inst=n_new_inst,
+        n_event=n_event,
         holders=holders,
         consensus=cons_vm,
         sentiment=sentiment,

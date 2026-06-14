@@ -36,6 +36,24 @@ _SEC_HEADERS = {
 }
 
 
+# 분기 사이 식별자가 바뀐 종목(기업 액션). 구 CUSIP → 정본(현재) CUSIP.
+# 분기 비교 시 같은 종목으로 인식시켜 캐리오버가 '신규 매수'로 오인되는 것을 막는다.
+CUSIP_ALIAS = {
+    "046353108": "G0593M107",  # AstraZeneca: ADR 종료 → 보통주 전환 (2026-01)
+}
+
+# 정본 CUSIP → 사용자 표시용 기업 액션 라벨. 이 종목들은 ADR↔보통주처럼 주식수
+# 환산비가 1:1이 아니라 분기 간 수량·거래금액 변화를 신뢰할 수 없어 라벨로만 표시한다.
+CUSIP_EVENT = {
+    "G0593M107": "ADR→보통주 전환",
+}
+
+
+def canonical_cusip(cusip):
+    """구 CUSIP을 정본으로 정규화한다. 별칭이 없으면 입력 그대로 반환."""
+    return CUSIP_ALIAS.get(cusip, cusip)
+
+
 def prev_quarter_date(d: date) -> date:
     """분기말 날짜를 받아 직전 분기말 날짜를 반환한다."""
     if d.month == 3:  return date(d.year - 1, 12, 31)

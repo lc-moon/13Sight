@@ -92,6 +92,20 @@
   .cons-metric-rank { font-size: var(--fs-code); color: var(--color-body); margin-top: 2px; }
 
   .holdings-section { padding-bottom: var(--space-5xl); }
+  /* 거래 추정액 강조 컬럼 */
+  .th-trade, .td-trade { background: #fdf6ec; }
+  .th-trade { color: #854f0b; }
+  .th-trade-sub {
+    display: block; font-family: var(--font-sans);
+    font-size: 10px; font-weight: var(--fw-regular); color: #b07d2e;
+    margin-top: 2px;
+  }
+  .td-trade { font-weight: var(--fw-medium); }
+  .trade-note {
+    font-size: var(--fs-caption); color: var(--color-mute);
+    line-height: var(--lh-caption); max-width: 760px;
+    margin: 0 0 var(--space-md);
+  }
   .stock-table-name a { color: var(--color-ink); }
   .stock-table-name a:hover { color: var(--color-link); text-decoration: underline; }
   .change-new {
@@ -102,6 +116,11 @@
   .change-sell {
     font-size: 10px; font-weight: var(--fw-medium);
     background: var(--color-down-soft, #e8eefc); color: var(--color-down);
+    padding: 1px 6px; border-radius: var(--radius-xs); margin-left: 6px;
+  }
+  .change-event {
+    font-size: 10px; font-weight: var(--fw-medium);
+    background: var(--color-canvas-soft-2); color: var(--color-body);
     padding: 1px 6px; border-radius: var(--radius-xs); margin-left: 6px;
   }
 
@@ -175,6 +194,12 @@
       <div class="stat-value" style="color:var(--color-mute)">{{ n_new_inst }}</div>
     </div>
     {% endif %}
+    {% if n_event %}
+    <div class="stat-box" data-filter="event">
+      <div class="stat-label">보고 변경</div>
+      <div class="stat-value" style="color:var(--color-mute)">{{ n_event }}</div>
+    </div>
+    {% endif %}
   </div>
 
   <!-- Buy/sell sentiment bar -->
@@ -240,6 +265,7 @@
       <div class="section-title">보유 기관 (<span id="holdersLabel">{{ latest_label }}</span>)</div>
       <div class="section-meta">전분기 대비 변동</div>
     </div>
+    <p class="trade-note">거래 추정액은 직전 분기 대비 보유수량 증감에 기준 분기말 종가를 적용해 산출한 추정치입니다. 13F 보고서는 분기말 보유 현황만 공시할 뿐 실제 매매 체결 시점과 단가는 담고 있지 않으므로, 분기 중 거래 시점에 따라 실제 거래대금과 차이가 있을 수 있습니다.</p>
     <div class="card">
       <div class="table-scroll">
         <table class="data-table">
@@ -248,6 +274,7 @@
               <th style="width:60px;text-align:right">순위</th>
               <th>기관명</th>
               <th class="num">평가금액 / 변화</th>
+              <th class="num th-trade">거래 추정액<span class="th-trade-sub">보유수량 변화 × 분기말 종가</span></th>
               <th class="num">보유수량 / 변화</th>
             </tr>
           </thead>
@@ -260,13 +287,15 @@
                   <a href="/institution/{{ h.cik }}">{{ h.institution }}</a>
                   {% if h.tag == 'new' %}<span class="change-new" style="margin-left:6px">신규</span>
                   {% elif h.tag == 'new_inst' %}<span class="new-report-badge">신규 보고</span>
-                  {% elif h.tag == 'full_sell' %}<span class="change-sell">전량 매도</span>{% endif %}
+                  {% elif h.tag == 'full_sell' %}<span class="change-sell">전량 매도</span>
+                  {% elif h.tag == 'event' %}<span class="change-event">보고 변경</span>{% endif %}
                 </div>
                 {% if h.institution_ko %}
                 <div class="td-name-sub">{{ h.institution_ko }}</div>
                 {% endif %}
               </td>
               <td class="td-num">{{ h.val_html | safe }}</td>
+              <td class="td-num td-trade">{{ h.trade_html | safe }}</td>
               <td class="td-num">{{ h.shares_html | safe }}</td>
             </tr>
             {% endfor %}

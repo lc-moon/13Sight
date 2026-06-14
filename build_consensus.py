@@ -1,7 +1,7 @@
 """top100 기관의 공통 매수 종목을 집계·점수화하여 consensus 테이블에 저장하는 전처리 스크립트."""
 import math
 import psycopg2
-from utils import DB_CONFIG, prev_quarter_date
+from utils import DB_CONFIG, prev_quarter_date, canonical_cusip, CUSIP_EVENT
 
 
 def fetch_target_dates(conn):
@@ -32,7 +32,8 @@ def load_holdings(conn, report_date):
 
     result = {}
     for cik, cusip, company_name, ticker, value, shares in rows:
-        result.setdefault(cik, {})[cusip] = (company_name, ticker, value or 0, shares or 0)
+        # 구 CUSIP을 정본으로 통합해 분기 간 동일 종목으로 인식시킨다.
+        result.setdefault(cik, {})[canonical_cusip(cusip)] = (company_name, ticker, value or 0, shares or 0)
     return result
 
 
@@ -74,6 +75,12 @@ def build_consensus():
 
             for cusip, (company_name, ticker, curr_val, curr_shares) in curr.items():
                 prev_entry   = prev.get(cusip)
+
+                # 식별자 변경(ADR→보통주 등) 종목의 캐리오버는 주식수 환산비가 달라
+                # 매수 판단이 불가능하므로 집계에서 제외한다(진짜 신규 보유만 통과).
+                if cusip in CUSIP_EVENT and prev_entry is not None:
+                    continue
+
                 prev_val     = prev_entry[2] if prev_entry else 0
                 prev_shares  = prev_entry[3] if prev_entry else 0
 
