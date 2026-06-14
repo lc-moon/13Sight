@@ -289,8 +289,8 @@
 
     /* ── Score bar ── */
     .score-cell { display: flex; align-items: center; gap: 10px; justify-content: flex-end; }
-    .score-bar { width: 80px; height: 4px; background: var(--color-canvas-soft-2); border-radius: 2px; overflow: hidden; }
-    .score-fill { height: 100%; background: linear-gradient(to right, #00C8B4, #007CF0, #7828C8); border-radius: 2px; }
+    .score-bar { position: relative; width: 80px; height: 7px; background: linear-gradient(to right, #00C8B4, #007CF0, #7828C8); border-radius: 4px; overflow: hidden; }
+    .score-fill { position: absolute; top: 0; bottom: 0; right: 0; background: #e8e8e8; }
     .score-value { font-family: var(--font-mono); font-size: 12px; color: var(--color-body); min-width: 36px; text-align: right; }
 
     /* ── Meta row ── */

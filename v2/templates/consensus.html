@@ -53,6 +53,19 @@
   .detail-loading { color: var(--color-mute); font-size: var(--fs-code); }
   .stock-link { color: var(--color-ink); display: inline-block; }
   .stock-link:hover .ticker { background: var(--color-canvas-soft-2); }
+  td.td-name .stock-link:hover { color: var(--color-link); text-decoration: underline; }
+
+  /* ── Filter ── */
+  .consensus-toolbar { margin-bottom: 12px; }
+  .consensus-filter {
+    width: 100%; max-width: 320px; height: 38px; padding: 0 14px;
+    font-family: var(--font-sans); font-size: var(--fs-body-sm);
+    color: var(--color-ink); background: var(--color-canvas);
+    border: 1px solid var(--color-hairline-strong); border-radius: var(--radius-md);
+    outline: none;
+  }
+  .consensus-filter:focus { border-color: var(--color-link); }
+  .consensus-filter::placeholder { color: var(--color-mute); }
 </style>
 {% endblock %}
 
@@ -78,6 +91,10 @@
   {% if not rows %}
   <div class="no-data">데이터 없음 — build_consensus.py를 먼저 실행하세요.</div>
   {% else %}
+  <div class="consensus-toolbar">
+    <input type="text" id="consensusFilter" class="consensus-filter"
+           placeholder="티커·종목명 검색" autocomplete="off">
+  </div>
   <div class="card" style="margin-bottom: var(--space-5xl)">
     <div class="table-scroll">
       <table class="data-table">
@@ -121,11 +138,11 @@
           <tr>
             <td class="td-rank">{{ row.rank }}</td>
             <td><a href="/stock/{{ row.cusip }}" class="stock-link"><span class="ticker">{{ row.ticker }}</span></a></td>
-            <td class="td-name">{{ row.company_name }}</td>
+            <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a></td>
             <td class="td-num">
               <div class="score-cell">
                 <div class="score-bar">
-                  <div class="score-fill" style="width: {{ row.composite_score }}%"></div>
+                  <div class="score-fill" style="left: {{ row.composite_score }}%"></div>
                 </div>
                 <span class="score-value">{{ row.composite_score }}</span>
               </div>
@@ -138,7 +155,7 @@
           <tr class="consensus-row" data-cusip="{{ row.cusip }}">
             <td class="td-rank">{{ row.rank }}</td>
             <td><a href="/stock/{{ row.cusip }}" class="stock-link"><span class="ticker">{{ row.ticker }}</span></a></td>
-            <td class="td-name">{{ row.company_name }}<span class="expand-icon">›</span></td>
+            <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a><span class="expand-icon">›</span></td>
             <td class="td-num">{{ row.value }}</td>
           </tr>
           {% endif %}
@@ -151,6 +168,25 @@
 </div>
 
 <script>
+// 티커·종목명 즉시 필터 (현재 탭에 로드된 행 한정, 모든 탭 적용)
+(function () {
+  var input = document.getElementById('consensusFilter');
+  var table = document.querySelector('.data-table');
+  if (!input || !table) return;
+  input.addEventListener('input', function () {
+    var q = input.value.trim().toLowerCase();
+    // 펼쳐진 상세 행은 닫아 잔상 방지
+    table.querySelectorAll('tbody tr.detail-row').forEach(function (d) { d.remove(); });
+    table.querySelectorAll('tbody tr.consensus-row.open').forEach(function (r) { r.classList.remove('open'); });
+    table.querySelectorAll('tbody tr:not(.detail-row)').forEach(function (row) {
+      var tk = row.querySelector('.ticker');
+      var nm = row.querySelector('.td-name');
+      var hay = ((tk ? tk.textContent : '') + ' ' + (nm ? nm.textContent : '')).toLowerCase();
+      row.style.display = hay.indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+})();
+
 (function () {
   var tab = '{{ tab }}';
   if (tab === 'composite') return;

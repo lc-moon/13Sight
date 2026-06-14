@@ -72,8 +72,8 @@
   }
   .cons-rank { font-size: var(--fs-body-sm); color: var(--color-body); }
   .cons-rank strong { color: var(--color-ink); font-weight: var(--fw-semibold); }
-  .cons-bar { width: 100%; height: 6px; background: var(--color-canvas-soft-2); border-radius: 3px; overflow: hidden; margin-bottom: var(--space-lg); }
-  .cons-fill { height: 100%; background: linear-gradient(to right, #00C8B4, #007CF0, #7828C8); border-radius: 3px; }
+  .cons-bar { position: relative; width: 100%; height: 7px; background: linear-gradient(to right, #00C8B4, #007CF0, #7828C8); border-radius: 4px; overflow: hidden; margin-bottom: var(--space-lg); }
+  .cons-fill { position: absolute; top: 0; bottom: 0; right: 0; background: #e8e8e8; }
   .cons-metrics { display: flex; gap: var(--space-xl); }
   .cons-metric { flex: 1; }
   .cons-metric-label { font-size: var(--fs-caption); color: var(--color-mute); margin-bottom: 2px; }
@@ -177,7 +177,7 @@
       {% endif %}
     </div>
     <div class="cons-bar">
-      <div class="cons-fill" style="width: {{ consensus.composite_score }}%"></div>
+      <div class="cons-fill" style="left: {{ consensus.composite_score }}%"></div>
     </div>
     <div class="cons-metrics">
       <div class="cons-metric">
