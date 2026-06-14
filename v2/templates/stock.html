@@ -54,6 +54,17 @@
   .stat-up   { color: var(--color-up); }
   .stat-down { color: var(--color-down); }
 
+  /* ── Buy/sell sentiment bar ── */
+  .sent-top { display: flex; align-items: baseline; gap: 8px; margin-bottom: 10px; }
+  .sent-top .label { font-size: var(--fs-body-sm); color: var(--color-body); }
+  .sent-buy  { font-size: var(--fs-display-sm); font-weight: var(--fw-semibold); color: var(--color-up); line-height: 1; }
+  .sent-sell { font-size: var(--fs-display-sm); font-weight: var(--fw-semibold); color: var(--color-down); line-height: 1; }
+  .sent-bar { display: flex; width: 100%; height: 14px; border-radius: 7px; overflow: hidden; }
+  .sent-bar > div { height: 100%; }
+  .sent-legend { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+  .sent-leg { font-size: var(--fs-caption); color: var(--color-body); display: inline-flex; align-items: center; }
+  .sent-leg i { width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; display: inline-block; }
+
   /* ── Consensus card ── */
   .cons-card {
     background: var(--color-canvas); border-radius: var(--radius-md);
@@ -61,7 +72,7 @@
     padding: var(--space-xl); margin-bottom: var(--space-xl);
   }
   .cons-caption {
-    font-family: var(--font-mono); font-size: 11px; font-weight: var(--fw-medium);
+    font-family: var(--font-sans); font-size: var(--fs-body-sm); font-weight: var(--fw-medium);
     color: var(--color-mute); text-transform: uppercase; letter-spacing: 0.06em;
     margin-bottom: var(--space-md);
   }
@@ -165,6 +176,29 @@
     </div>
     {% endif %}
   </div>
+
+  <!-- Buy/sell sentiment bar -->
+  {% if sentiment %}
+  <div class="cons-card">
+    <div class="cons-caption">기관 매수 · 매도 분포</div>
+    <div class="sent-top">
+      <span class="label">매수세</span>
+      <span class="sent-buy">{{ n_new + n_buy }}</span>
+      <span class="label">vs 매도세</span>
+      <span class="sent-sell">{{ n_sell + n_full_sell }}</span>
+    </div>
+    <div class="sent-bar">
+      {% for s in sentiment %}
+      <div style="width:{{ s.pct }}%; background:{{ s.color }}" title="{{ s.label }} {{ s.count }}"></div>
+      {% endfor %}
+    </div>
+    <div class="sent-legend">
+      {% for s in sentiment %}
+      <span class="sent-leg"><i style="background:{{ s.color }}"></i>{{ s.label }} {{ s.count }}</span>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
 
   <!-- Consensus score -->
   {% if consensus %}

@@ -137,6 +137,8 @@ CREATE TABLE holdings (
 
 **CUSIP 합산**: 같은 종목이 SOLE/SHARED/NONE 재량 구분으로 여러 행일 수 있어 `save_holdings()`에서 CUSIP 기준으로 합산 후 저장.
 
+**폰트(한글 금지 폰트)**: `--font-mono`(JetBrains Mono)는 한글 글리프가 없어 한글에 적용하면 깨진 폴백 폰트로 렌더링된다. 한글이 들어가는 모든 텍스트(캡션·라벨·제목 등)에는 `--font-sans`를 사용한다. `--font-mono`는 숫자·CUSIP·티커·순위·점수 등 **ASCII 전용** 요소에만 쓴다.
+
 **consensus 집계 로직** (`build_consensus.py`): `curr_shares > prev_shares`인 기관만 매수로 판단하여 세 지표를 계산한다.
 - `total_buy_amount`: `round(curr_val * (curr_shares - prev_shares) / curr_shares)` — 신규 취득 주식의 현재 평가금액 합산 (가격 상승분 제외)
 - `total_weight_change`: `curr_val * (curr_shares - prev_shares) / curr_shares / curr_aum` — 신규 취득 주식이 현재 운용금액에서 차지하는 비중 합산 (기관 규모 중립 확신 지표)

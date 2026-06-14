@@ -57,6 +57,9 @@ def fetch_top100():
 
 def fetch_search_results(q: str) -> list:
     conn = psycopg2.connect(**DB_CONFIG)
+    # CIK는 leading zero를 무시한 유효숫자 접두(prefix) 매칭 — "914208"·"0000914208" 모두
+    # 0000914208에 매칭. 과거 substring 매칭은 "00020"→"20"이 CIK 어디든 포함되면 잡혀
+    # 무관한 기관이 운용금액순으로 다수 노출되는 문제가 있었음.
     q_stripped = q.lstrip("0") or "0"
     try:
         with conn.cursor() as cur:
@@ -64,11 +67,11 @@ def fetch_search_results(q: str) -> list:
                 """
                 SELECT cik, institution
                 FROM top100_institutions
-                WHERE institution ILIKE %s OR cik::text LIKE %s OR cik::text LIKE %s
+                WHERE institution ILIKE %s OR ltrim(cik, '0') LIKE %s
                 ORDER BY curr_amount_usd DESC
                 LIMIT 10
                 """,
-                (f"%{q}%", f"%{q}%", f"%{q_stripped}%"),
+                (f"%{q}%", f"{q_stripped}%"),
             )
             return cur.fetchall()
     finally:
@@ -656,6 +659,22 @@ def stock_detail(cusip):
             'weight_change':   f"{weight_chg*100:.4f}%",
         }
 
+    # 매수·매도 분포 100% 누적 막대 세그먼트. 신규 보고 기관은 직전 분기 비교 기준이
+    # 없어 매수·매도 판단 불가 → 그래프에서 제외. 5개 카테고리는 0이어도 항상 범례에 표시.
+    # 가장 강한 신호(신규 매수·전량 매도)에 가장 선명한 색을 배치.
+    seg_total = n_new + n_buy + n_hold + n_sell + n_full_sell
+    seg_defs = [
+        ('신규 매수', n_new,       '#d23f3f'),
+        ('매수',      n_buy,       '#db5a5a'),
+        ('변동 없음', n_hold,      '#cfcfcf'),
+        ('매도',      n_sell,      '#4276d4'),
+        ('전량 매도', n_full_sell, '#1e58c8'),
+    ]
+    sentiment = [
+        {'label': l, 'count': c, 'color': col, 'pct': round(c / seg_total * 100, 2)}
+        for l, c, col in seg_defs
+    ] if seg_total else []
+
     return render_template('stock.html',
         found=True,
         cusip=cusip,
@@ -670,6 +689,7 @@ def stock_detail(cusip):
         n_new_inst=n_new_inst,
         holders=holders,
         consensus=cons_vm,
+        sentiment=sentiment,
         latest_label=quarter_label(curr_date),
         prev_label=quarter_label(prev_date),
     )

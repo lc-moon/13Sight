@@ -6,7 +6,7 @@
 <style>
   /* ── Hero ── */
   .hero {
-    position: relative; overflow: hidden;
+    position: relative;
     background: var(--color-canvas);
   }
   .hero-mesh {
@@ -68,6 +68,7 @@
     background: var(--color-canvas); border-radius: var(--radius-md);
     box-shadow: var(--elevation-5); text-align: left;
     max-height: 360px; overflow-y: auto; overflow-x: hidden;
+    scrollbar-gutter: stable;
   }
   .search-item {
     display: flex; align-items: center; gap: 10px;
@@ -75,10 +76,22 @@
     cursor: pointer; transition: background .1s;
   }
   .search-item:hover { background: var(--color-canvas-soft); }
-  .search-item-name { font-size: var(--fs-body-sm); font-weight: var(--fw-medium); color: var(--color-ink); }
-  .search-item-ko   { font-size: var(--fs-code); color: var(--color-body); }
+  .search-item-main { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .search-item-name {
+    font-size: var(--fs-body-sm); font-weight: var(--fw-medium); color: var(--color-ink);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .search-item-ko   {
+    font-size: var(--fs-code); color: var(--color-body);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .search-item-right { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; flex-shrink: 0; }
   .search-item-cik  {
-    margin-left: auto; font-family: var(--font-mono);
+    flex-shrink: 0; font-family: var(--font-mono);
+    font-size: var(--fs-caption); color: var(--color-mute);
+  }
+  .search-item-type {
+    flex-shrink: 0; font-family: var(--font-sans);
     font-size: var(--fs-caption); color: var(--color-mute);
   }
 
@@ -195,18 +208,27 @@
         .then(function (r) { return r.json(); })
         .then(function (results) {
           if (!results.length) { close(); return; }
-          dropdown.innerHTML = results.slice(0, 10).map(function (r) {
+          var insts  = results.filter(function (r) { return r.type !== 'stock'; }).slice(0, 5);
+          var stocks = results.filter(function (r) { return r.type === 'stock'; }).slice(0, 5);
+          var items  = insts.concat(stocks);
+          if (!items.length) { close(); return; }
+          dropdown.innerHTML = items.map(function (r) {
             if (r.type === 'stock') {
               return '<div class="search-item" onclick="location.href=\'/stock/' + r.cusip + '\'">' +
                 (r.ticker ? '<span class="ticker">' + r.ticker + '</span>' : '') +
-                '<span class="search-item-name">' + r.company_name + '</span>' +
-                '<span class="search-item-cik">종목</span>' +
+                '<div class="search-item-main"><span class="search-item-name">' + r.company_name + '</span></div>' +
+                '<span class="search-item-type">종목</span>' +
                 '</div>';
             }
             return '<div class="search-item" onclick="location.href=\'/institution/' + r.cik + '\'">' +
-              '<span class="search-item-name">' + r.institution + '</span>' +
-              (r.institution_ko ? '<span class="search-item-ko">' + r.institution_ko + '</span>' : '') +
-              '<span class="search-item-cik">' + r.cik + '</span>' +
+              '<div class="search-item-main">' +
+                '<span class="search-item-name">' + r.institution + '</span>' +
+                (r.institution_ko ? '<span class="search-item-ko">' + r.institution_ko + '</span>' : '') +
+              '</div>' +
+              '<div class="search-item-right">' +
+                '<span class="search-item-type">기관</span>' +
+                '<span class="search-item-cik">' + r.cik + '</span>' +
+              '</div>' +
               '</div>';
           }).join('');
           dropdown.style.display = 'block';
