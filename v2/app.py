@@ -129,7 +129,8 @@ def fetch_consensus(tab: str) -> list:
                 f"""
                 SELECT composite_rank, inst_rank, buy_rank, weight_rank,
                        ticker, company_name, cusip,
-                       composite_score, institution_count, total_buy_amount, total_weight_change
+                       composite_score, institution_count, total_buy_amount, total_weight_change,
+                       inst_score, buy_score, weight_score
                 FROM consensus
                 WHERE {rank_col} IS NOT NULL
                 ORDER BY {rank_col} ASC
@@ -190,8 +191,6 @@ def fetch_consensus_detail(cusip: str, tab: str) -> list:
         else:
             result.append({"name": institution, "cik": cik, "display": None, "raw": curr_aum or 0})
     result.sort(key=lambda x: -x["raw"])
-    for item in result:
-        del item["raw"]
     return result
 
 
@@ -265,6 +264,20 @@ def fetch_stock_search(q: str) -> list:
 
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
+
+def _radar_geom(s_inst, s_buy, s_weight) -> dict:
+    """종합 점수 3지표를 삼각형 레이더 좌표로 변환 (viewBox 200x165, 중심 100,100, R=80)."""
+    fi, fb, fw = s_inst / 100, s_buy / 100, s_weight / 100
+    ax, ay = 100, 100 - fi * 80
+    bx, by = 100 + fb * 69.3, 100 + fb * 40
+    cx, cy = 100 - fw * 69.3, 100 + fw * 40
+    return {
+        "poly": f"{ax:.1f},{ay:.1f} {bx:.1f},{by:.1f} {cx:.1f},{cy:.1f}",
+        "dots": [(round(ax, 1), round(ay, 1)),
+                 (round(bx, 1), round(by, 1)),
+                 (round(cx, 1), round(cy, 1))],
+    }
+
 
 def _fmt_value(v) -> str:
     if v is None:
@@ -679,12 +692,28 @@ def consensus():
     for r in db_rows:
         row = {'ticker': r[4] or '-', 'company_name': r[5], 'cusip': r[6]}
         if tab == "composite":
+            i_s, b_s, w_s = r[11], r[12], r[13]
+            # 표시 종합점수는 저장된 정수 점수로 재계산해 기여합과 정확히 일치시킴
+            # (DB의 composite_score는 반올림 전 실수로 계산돼 0.1 오차가 생김)
+            comp = i_s * 0.5 + b_s * 0.3 + w_s * 0.2
             row.update({
                 'rank':            r[0],
-                'composite_score': f"{r[7]:.1f}",
+                'composite_score': f"{comp:.1f}",
                 'inst_rank':       r[1] if r[1] else '-',
                 'buy_rank':        r[2] if r[2] else '-',
                 'weight_rank':     r[3] if r[3] else '-',
+                'radar':           _radar_geom(i_s, b_s, w_s),
+                'metrics': [
+                    {'key': 'inst',   'label': '기관 수',   'score': i_s,
+                     'weight': 50, 'contrib': f"{i_s * 0.5:.1f}",
+                     'raw': f"{r[8]}개 기관", 'rank': r[1] if r[1] else '-'},
+                    {'key': 'buy',    'label': '매수 금액', 'score': b_s,
+                     'weight': 30, 'contrib': f"{b_s * 0.3:.1f}",
+                     'raw': _fmt_value(r[9]), 'rank': r[2] if r[2] else '-'},
+                    {'key': 'weight', 'label': '비중 변화', 'score': w_s,
+                     'weight': 20, 'contrib': f"{w_s * 0.2:.1f}",
+                     'raw': f"{r[10] * 100:.4f}%", 'rank': r[3] if r[3] else '-'},
+                ],
             })
         elif tab == "inst":
             row.update({'rank': r[1], 'value': str(r[8])})

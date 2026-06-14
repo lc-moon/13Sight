@@ -55,6 +55,67 @@
   .stock-link:hover .ticker { background: var(--color-canvas-soft-2); }
   td.td-name .stock-link:hover { color: var(--color-link); text-decoration: underline; }
 
+  /* ── Composite breakdown panel (radar + bars) ── */
+  .composite-body { display: flex; align-items: center; gap: 22px; flex-wrap: wrap; }
+  .composite-radar { width: 190px; height: 157px; flex-shrink: 0; }
+  .radar-grid { fill: none; stroke: var(--color-hairline); stroke-width: 1; }
+  .radar-grid-outer { stroke: var(--color-hairline-strong); stroke-width: 1.2; }
+  .radar-data { fill: rgba(15, 110, 86, 0.16); stroke: #0F6E56; stroke-width: 2; }
+  .radar-dot  { fill: #0F6E56; }
+  .radar-label { font-family: var(--font-sans); font-size: 10.5px; fill: var(--color-mute); }
+
+  .metric-bars { flex: 1; min-width: 260px; display: flex; flex-direction: column; gap: 11px; }
+  .metric-row {
+    display: grid; grid-template-columns: 72px 1fr 64px; gap: 10px; align-items: center;
+  }
+  .metric-label { font-size: var(--fs-code); }
+  .metric-track {
+    height: 16px; background: var(--color-canvas);
+    border: 1px solid var(--color-hairline); border-radius: var(--radius-xs); overflow: hidden;
+  }
+  .metric-fill { display: block; height: 100%; }
+  .metric-inst   { background: #C7B3EC; }
+  .metric-buy    { background: #FAD98F; }
+  .metric-weight { background: #9FE1CB; }
+  .metric-inst-ink   { color: #4a1880; }
+  .metric-buy-ink    { color: #8a5d00; }
+  .metric-weight-ink { color: #0F6E56; }
+  .metric-contrib {
+    font-family: var(--font-mono); font-size: 12px; text-align: right; color: var(--color-mute);
+  }
+  .metric-contrib b { font-weight: var(--fw-medium); }
+  .metric-sub {
+    font-family: var(--font-mono); font-size: 11px; color: var(--color-mute);
+    margin: -7px 0 2px 82px;
+  }
+
+  /* ── inst 탭: 도트 그리드 ── */
+  .dotgrid {
+    display: grid; grid-template-columns: repeat(25, 1fr); gap: 4px;
+    max-width: 430px; margin-bottom: 10px;
+  }
+  .dot {
+    aspect-ratio: 1; border-radius: 2px;
+    background: var(--color-canvas); border: 1px solid var(--color-hairline);
+  }
+  .dot.on { background: #C7B3EC; border-color: #C7B3EC; }
+  .dot-cap { font-size: var(--fs-caption); color: var(--color-body); margin-bottom: 16px; }
+  .dot-cap b { color: #4a1880; font-weight: var(--fw-medium); }
+
+  /* ── buy·weight 탭: 도넛 ── */
+  .donut-wrap { display: flex; align-items: center; gap: 28px; flex-wrap: wrap; }
+  .donut { width: 130px; height: 130px; flex-shrink: 0; }
+  .donut-c  { font-family: var(--font-mono); font-size: 13px; font-weight: var(--fw-medium); fill: var(--color-ink); }
+  .donut-cs { font-family: var(--font-sans); font-size: 10px; fill: var(--color-mute); }
+  .lg { display: flex; flex-direction: column; gap: 6px; font-size: var(--fs-code); min-width: 240px; }
+  .lg-row { display: flex; align-items: center; gap: 8px; }
+  .lg-sw { width: 10px; height: 10px; border-radius: 2px; flex-shrink: 0; }
+  .lg-nm { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .lg-nm a { color: var(--color-ink); }
+  .lg-nm a:hover { color: var(--color-link); text-decoration: underline; }
+  .lg-v { font-family: var(--font-mono); color: var(--color-body); white-space: nowrap; }
+  .lg-pct { font-family: var(--font-mono); color: var(--color-mute); width: 34px; text-align: right; }
+
   /* ── Filter ── */
   .consensus-toolbar { margin-bottom: 12px; }
   .consensus-filter {
@@ -135,10 +196,10 @@
         <tbody>
           {% for row in rows %}
           {% if tab == "composite" %}
-          <tr>
+          <tr class="consensus-row" data-cusip="{{ row.cusip }}">
             <td class="td-rank">{{ row.rank }}</td>
             <td><a href="/stock/{{ row.cusip }}" class="stock-link"><span class="ticker">{{ row.ticker }}</span></a></td>
-            <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a></td>
+            <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a><span class="expand-icon">›</span></td>
             <td class="td-num">
               <div class="score-cell">
                 <div class="score-bar">
@@ -150,6 +211,38 @@
             <td class="td-sub">{{ row.inst_rank }}</td>
             <td class="td-sub">{{ row.buy_rank }}</td>
             <td class="td-sub">{{ row.weight_rank }}</td>
+          </tr>
+          <tr class="detail-row" data-for="{{ row.cusip }}" data-static="1" style="display:none">
+            <td colspan="7">
+              <div class="detail-panel">
+                <div class="detail-title">종합점수 구성 — {{ row.composite_score }}</div>
+                <div class="composite-body">
+                  <svg class="composite-radar" viewBox="0 0 200 165" role="img" aria-label="{{ row.ticker }} 지표 점수 레이더">
+                    <polygon points="100,20 169.3,140 30.7,140" class="radar-grid radar-grid-outer"/>
+                    <polygon points="100,47.2 145.7,126.4 54.3,126.4" class="radar-grid"/>
+                    <polygon points="100,73.6 122.9,113.2 77.1,113.2" class="radar-grid"/>
+                    <line x1="100" y1="100" x2="100" y2="20" class="radar-grid"/>
+                    <line x1="100" y1="100" x2="169.3" y2="140" class="radar-grid"/>
+                    <line x1="100" y1="100" x2="30.7" y2="140" class="radar-grid"/>
+                    <polygon points="{{ row.radar.poly }}" class="radar-data"/>
+                    {% for d in row.radar.dots %}<circle cx="{{ d[0] }}" cy="{{ d[1] }}" r="3.2" class="radar-dot"/>{% endfor %}
+                    <text x="100" y="13" text-anchor="middle" class="radar-label">기관 수</text>
+                    <text x="174" y="153" text-anchor="middle" class="radar-label">매수 금액</text>
+                    <text x="26" y="153" text-anchor="middle" class="radar-label">비중 변화</text>
+                  </svg>
+                  <div class="metric-bars">
+                    {% for m in row.metrics %}
+                    <div class="metric-row">
+                      <span class="metric-label">{{ m.label }}</span>
+                      <span class="metric-track"><span class="metric-fill metric-{{ m.key }}" style="width:{{ m.score }}%"></span></span>
+                      <span class="metric-contrib">×{{ m.weight }} <b class="metric-{{ m.key }}-ink">{{ m.contrib }}</b></span>
+                    </div>
+                    <div class="metric-sub">{{ m.raw }} · {{ m.rank }}위 · 점수 {{ m.score }}</div>
+                    {% endfor %}
+                  </div>
+                </div>
+              </div>
+            </td>
           </tr>
           {% else %}
           <tr class="consensus-row" data-cusip="{{ row.cusip }}">
@@ -175,14 +268,42 @@
   if (!input || !table) return;
   input.addEventListener('input', function () {
     var q = input.value.trim().toLowerCase();
-    // 펼쳐진 상세 행은 닫아 잔상 방지
-    table.querySelectorAll('tbody tr.detail-row').forEach(function (d) { d.remove(); });
+    // 펼쳐진 상세 행은 닫아 잔상 방지 (종합 탭은 정적 패널이라 숨김, 나머지는 제거)
+    table.querySelectorAll('tbody tr.detail-row').forEach(function (d) {
+      if (d.dataset.static) { d.style.display = 'none'; } else { d.remove(); }
+    });
     table.querySelectorAll('tbody tr.consensus-row.open').forEach(function (r) { r.classList.remove('open'); });
     table.querySelectorAll('tbody tr:not(.detail-row)').forEach(function (row) {
       var tk = row.querySelector('.ticker');
       var nm = row.querySelector('.td-name');
       var hay = ((tk ? tk.textContent : '') + ' ' + (nm ? nm.textContent : '')).toLowerCase();
       row.style.display = hay.indexOf(q) !== -1 ? '' : 'none';
+    });
+  });
+})();
+
+// 종합 탭: 서버에서 미리 렌더된 정적 패널을 토글 (네트워크 요청 없음)
+(function () {
+  if ('{{ tab }}' !== 'composite') return;
+  var openCusip = null;
+
+  function close(cusip) {
+    var d = document.querySelector('tr.detail-row[data-for="' + cusip + '"]');
+    if (d) d.style.display = 'none';
+    var r = document.querySelector('tr.consensus-row[data-cusip="' + cusip + '"]');
+    if (r) r.classList.remove('open');
+  }
+
+  document.querySelectorAll('tr.consensus-row').forEach(function (row) {
+    row.addEventListener('click', function (e) {
+      if (e.target.closest('a')) return;
+      var cusip = row.dataset.cusip;
+      if (openCusip && openCusip !== cusip) { close(openCusip); }
+      if (row.classList.contains('open')) { close(cusip); openCusip = null; return; }
+      row.classList.add('open');
+      var detail = document.querySelector('tr.detail-row[data-for="' + cusip + '"]');
+      if (detail) detail.style.display = '';
+      openCusip = cusip;
     });
   });
 })();
@@ -199,6 +320,77 @@
     buy:    '기관별 매수 금액',
     weight: '기관별 포트폴리오 비중 변화'
   };
+
+  var RAMP = {
+    buy:    ['#b87400','#d18a10','#e3a02b','#edb24e','#f3c270','#f7d090','#f9dcac','#fbe6c6'],
+    weight: ['#0f6e56','#1a8a6c','#2aa386','#4fb89e','#73c9b2','#97d9c6','#b6e5d7','#d2efe6']
+  };
+  var OTHER_COLOR = { buy: '#ece4d4', weight: '#dde9e4' };
+
+  function fmtMoney(v) {
+    v = Math.abs(v);
+    if (v >= 1e12) return '$' + (v / 1e12).toFixed(1) + '조';
+    if (v >= 1e8)  return '$' + Math.round(v / 1e8).toLocaleString() + '억';
+    if (v >= 1e6)  return '$' + (v / 1e6).toFixed(1) + 'M';
+    return '$' + Math.round(v).toLocaleString();
+  }
+
+  function renderDotGrid(count) {
+    var dots = '';
+    for (var i = 0; i < 100; i++) {
+      dots += '<span class="dot' + (i < count ? ' on' : '') + '"></span>';
+    }
+    return '<div class="dotgrid">' + dots + '</div>' +
+      '<div class="dot-cap">상위 100개 기관 중 <b>' + count + '곳</b>이 이번 분기 비중을 늘렸습니다</div>';
+  }
+
+  function renderDonut(institutions) {
+    var ramp = RAMP[tab], otherColor = OTHER_COLOR[tab];
+    var total = institutions.reduce(function (s, i) { return s + (i.raw || 0); }, 0);
+    if (total <= 0) return '<p class="detail-loading">데이터 없음</p>';
+
+    var TOP = 8;
+    var segs = institutions.slice(0, TOP).map(function (i, idx) {
+      return { name: i.name, cik: i.cik, val: i.raw, display: i.display, color: ramp[idx] };
+    });
+    if (institutions.length > TOP) {
+      var rest = institutions.slice(TOP).reduce(function (s, i) { return s + (i.raw || 0); }, 0);
+      segs.push({ name: '외 ' + (institutions.length - TOP) + '곳', cik: null, val: rest,
+                  display: (rest * 100).toFixed(4) + '%', color: otherColor });
+    }
+
+    var C = 339.292, off = 0;
+    var arcs = segs.map(function (s) {
+      var len = s.val / total * C;
+      var arc = '<circle cx="70" cy="70" r="54" fill="none" stroke="' + s.color +
+        '" stroke-width="20" stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) +
+        '" stroke-dashoffset="' + (-off).toFixed(2) + '"/>';
+      off += len;
+      return arc;
+    }).join('');
+
+    var center    = (tab === 'buy') ? fmtMoney(total) : (total * 100).toFixed(2) + '%';
+    var centerSub = (tab === 'buy') ? '총 매수' : '비중 합산';
+
+    var legend = segs.map(function (s) {
+      var pct = Math.round(s.val / total * 100);
+      var valStr = (tab === 'buy') ? fmtMoney(s.val) : (s.display || '');
+      var nm = s.cik ? '<a href="/institution/' + s.cik + '">' + s.name + '</a>' : s.name;
+      return '<div class="lg-row"><span class="lg-sw" style="background:' + s.color + '"></span>' +
+        '<span class="lg-nm">' + nm + '</span>' +
+        '<span class="lg-v">' + valStr + '</span>' +
+        '<span class="lg-pct">' + pct + '%</span></div>';
+    }).join('');
+
+    return '<div class="donut-wrap">' +
+      '<svg class="donut" viewBox="0 0 140 140" aria-hidden="true">' +
+        '<g transform="rotate(-90 70 70)">' + arcs + '</g>' +
+        '<text x="70" y="66" text-anchor="middle" class="donut-c">' + center + '</text>' +
+        '<text x="70" y="82" text-anchor="middle" class="donut-cs">' + centerSub + '</text>' +
+      '</svg>' +
+      '<div class="lg">' + legend + '</div>' +
+      '</div>';
+  }
 
   function renderContent(institutions) {
     var title = TITLES[tab] + ' (' + institutions.length + '개)';
@@ -218,23 +410,14 @@
                  '<a href="/institution/' + i.cik + '">' + i.name + '</a></div>';
         }).join('');
       }
-      return titleHtml +
+      return titleHtml + renderDotGrid(institutions.length) +
         '<div class="inst-two-col">' +
           '<div class="inst-col">' + makeRows(left, 0) + '</div>' +
           '<div class="inst-col">' + makeRows(right, mid) + '</div>' +
         '</div>';
     }
 
-    return titleHtml +
-      '<table class="detail-table"><tbody>' +
-      institutions.map(function (i, idx) {
-        return '<tr>' +
-          '<td class="dt-rank">' + (idx + 1) + '</td>' +
-          '<td><a href="/institution/' + i.cik + '">' + i.name + '</a></td>' +
-          '<td class="dt-val">' + (i.display || '') + '</td>' +
-          '</tr>';
-      }).join('') +
-      '</tbody></table>';
+    return titleHtml + renderDonut(institutions);
   }
 
   function removeDetail(cusip) {
