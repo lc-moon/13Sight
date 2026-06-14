@@ -38,20 +38,37 @@ _SEC_HEADERS = {
 
 # 분기 사이 식별자가 바뀐 종목(기업 액션). 구 CUSIP → 정본(현재) CUSIP.
 # 분기 비교 시 같은 종목으로 인식시켜 캐리오버가 '신규 매수'로 오인되는 것을 막는다.
+# (구 CUSIP은 다음 분기엔 데이터에서 사라지므로 항목을 영구히 둬도 무해 = no-op)
 CUSIP_ALIAS = {
     "046353108": "G0593M107",  # AstraZeneca: ADR 종료 → 보통주 전환 (2026-01)
 }
 
-# 정본 CUSIP → 사용자 표시용 기업 액션 라벨. 이 종목들은 ADR↔보통주처럼 주식수
-# 환산비가 1:1이 아니라 분기 간 수량·거래금액 변화를 신뢰할 수 없어 라벨로만 표시한다.
+# 정본 CUSIP → (사용자 표시 라벨, 전환 반영 분기말). 이 종목들은 ADR↔보통주처럼
+# 주식수 환산비가 1:1이 아니라 '전환 경계 분기'에선 수량·거래금액 변화를 신뢰할 수 없다.
+# is_cusip_event()가 비교 구간이 경계를 가로지를 때만 True를 돌려주므로, 다음 분기부터는
+# 자동으로 일반 비교로 복귀한다 — 수동 정리 불필요(항목은 영구히 둬도 무해).
 CUSIP_EVENT = {
-    "G0593M107": "ADR→보통주 전환",
+    "G0593M107": ("ADR→보통주 전환", date(2026, 3, 31)),
 }
 
 
 def canonical_cusip(cusip):
     """구 CUSIP을 정본으로 정규화한다. 별칭이 없으면 입력 그대로 반환."""
     return CUSIP_ALIAS.get(cusip, cusip)
+
+
+def cusip_event_label(cusip):
+    """식별자 전환 종목의 표시 라벨. 해당 없으면 None."""
+    ev = CUSIP_EVENT.get(cusip)
+    return ev[0] if ev else None
+
+
+def is_cusip_event(cusip, prev_date, curr_date):
+    """prev_date→curr_date 비교 구간이 이 종목의 식별자 전환 경계를 가로지르는지.
+    전환 분기말이 (직전 분기, 현재 분기] 안에 들면 직전은 구 CUSIP 기준이라 수량 비교 불가.
+    경계를 안 가로지르면(다음 분기부터) False → 일반 비교로 복귀."""
+    ev = CUSIP_EVENT.get(cusip)
+    return bool(ev) and prev_date is not None and prev_date < ev[1] <= curr_date
 
 
 def prev_quarter_date(d: date) -> date:

@@ -8,7 +8,8 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import psycopg2
 from flask import Flask, request, jsonify, render_template
-from utils import DB_CONFIG, prev_quarter_date, canonical_cusip, CUSIP_ALIAS, CUSIP_EVENT
+from utils import (DB_CONFIG, prev_quarter_date, canonical_cusip, CUSIP_ALIAS,
+                   is_cusip_event, cusip_event_label)
 
 # institution_names_kr.json 은 프로젝트 루트에 있음
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -454,7 +455,7 @@ def _tm_block(it, x, y, w, h):
     }
 
 
-def build_treemap(latest_by_cusip, prev_by_cusip, no_prev,
+def build_treemap(latest_by_cusip, prev_by_cusip, no_prev, event_cusips=(),
                   width=1000.0, height=380.0, top_n=24):
     """기관 최신 분기 보유 종목 → 비중 트리맵 블록 목록.
 
@@ -469,7 +470,7 @@ def build_treemap(latest_by_cusip, prev_by_cusip, no_prev,
 
     items = []
     for company_name, cusip, ticker, value, shares, _ in rows[:top_n]:
-        if no_prev or cusip in CUSIP_EVENT:
+        if no_prev or cusip in event_cusips:
             direction = "flat"
         elif cusip not in prev_by_cusip:
             direction = "new"
@@ -609,7 +610,10 @@ def institution_detail(cik):
     prev_by_cusip   = {row[1]: row for row in (fetch_holdings(cik_raw, prev_date) if prev_date else [])}
     no_prev = not prev_by_cusip
 
-    treemap = build_treemap(latest_by_cusip, prev_by_cusip, no_prev)
+    # 이번 비교 구간(prev_date→latest_date)에서 식별자 전환 경계에 걸리는 종목
+    event_cusips = {c for c in latest_by_cusip if is_cusip_event(c, prev_date, latest_date)}
+
+    treemap = build_treemap(latest_by_cusip, prev_by_cusip, no_prev, event_cusips)
 
     tab = request.args.get("tab", "all")
     TAB_DEFS = [
@@ -631,7 +635,7 @@ def institution_detail(cik):
         display = sorted(
             [(row, prev_by_cusip[row[1]], False)
              for row in latest_by_cusip.values()
-             if row[1] in prev_by_cusip and row[1] not in CUSIP_EVENT
+             if row[1] in prev_by_cusip and row[1] not in event_cusips
              and (row[4] or 0) > (prev_by_cusip[row[1]][4] or 0)],
             key=lambda x: -(x[0][3] or 0),
         )
@@ -639,7 +643,7 @@ def institution_detail(cik):
         display = sorted(
             [(row, prev_by_cusip[row[1]], False)
              for row in latest_by_cusip.values()
-             if row[1] in prev_by_cusip and row[1] not in CUSIP_EVENT
+             if row[1] in prev_by_cusip and row[1] not in event_cusips
              and (row[4] or 0) < (prev_by_cusip[row[1]][4] or 0)],
             key=lambda x: -(x[0][3] or 0),
         )
@@ -664,9 +668,9 @@ def institution_detail(cik):
             shares_html = f'{_fmt_shares(shares)} <span style="color:{_COLOR_DOWN}">▼ -{_fmt_shares(shares)}</span>' if shares else "-"
             # 전량 매도: 직전 보유 전량을 직전 분기말 종가로 매도
             trade_html  = f'<span style="color:{_COLOR_DOWN}">▼ -{_fmt_value(value)}</span>' if value else "—"
-        elif cusip in CUSIP_EVENT and prev_row:
+        elif cusip in event_cusips and prev_row:
             # 식별자 변경(ADR→보통주) 캐리오버: 환산비가 달라 변화 비교 불가.
-            label       = f'<span style="color:var(--color-mute)">{CUSIP_EVENT[cusip]}</span>'
+            label       = f'<span style="color:var(--color-mute)">{cusip_event_label(cusip)}</span>'
             val_html    = f'{_fmt_value(value)} {label}'
             shares_html = _fmt_shares(shares)
             trade_html  = label
@@ -776,7 +780,7 @@ def stock_detail(cusip):
     if not rows:
         return render_template('stock.html', found=False, cusip=cusip)
 
-    is_event = cusip in CUSIP_EVENT   # ADR→보통주 등 식별자 변경 종목
+    is_event = is_cusip_event(cusip, prev_date, curr_date)   # 전환 경계 분기에만 True
     kr_names = _load_kr_names()
     company_name = ticker = None
     holders = []
@@ -818,7 +822,7 @@ def stock_detail(cusip):
             # 현재 스냅샷만 보이고 분기 델타·거래추정액은 기업 액션 라벨로 대체.
             n_event += 1
             cat = tag = 'event'
-            label       = f'<span style="color:var(--color-mute)">{CUSIP_EVENT[cusip]}</span>'
+            label       = f'<span style="color:var(--color-mute)">{cusip_event_label(cusip)}</span>'
             val_html    = f'{_fmt_value(cval)} {label}'
             shares_html = _fmt_shares(cshares)
             trade_html  = label
