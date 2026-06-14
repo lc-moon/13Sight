@@ -78,6 +78,26 @@
   }
   .bar-label { font-size: 10px; color: var(--color-mute); text-align: center; white-space: nowrap; }
 
+  /* ── Portfolio treemap ── */
+  .tm-card {
+    background: var(--color-canvas); border-radius: var(--radius-md);
+    box-shadow: var(--elevation-2);
+    padding: var(--space-lg) var(--space-xl) var(--space-xl);
+    margin-bottom: var(--space-xl);
+  }
+  .tm-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: var(--space-md); }
+  .tm-title { font-size: var(--fs-body-md); font-weight: var(--fw-semibold); color: var(--color-ink); }
+  .tm-sub { font-size: var(--fs-caption); color: var(--color-mute); }
+  .tm-svg { width: 100%; height: auto; display: block; }
+  .tm-mono { font-family: var(--font-mono); }
+  .tm-sans { font-family: var(--font-sans); }
+  .tm-legend {
+    display: flex; flex-wrap: wrap; gap: 16px;
+    margin-top: var(--space-md); font-size: var(--fs-caption); color: var(--color-body);
+  }
+  .tm-legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .tm-legend i { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+
   /* ── Holdings table ── */
   .holdings-section { padding-bottom: var(--space-5xl); }
 
@@ -151,6 +171,49 @@
         </div>
         <span class="bar-label">{{ latest_label }}</span>
       </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Portfolio composition treemap -->
+  {% if treemap %}
+  <div class="tm-card">
+    <div class="tm-head">
+      <span class="tm-title">포트폴리오 구성</span>
+      <span class="tm-sub">{{ latest_label }} 기준 · 사각형 크기 = 평가금액 비중 · 칸에 마우스를 올리면 종목 상세</span>
+    </div>
+    <svg class="tm-svg" viewBox="0 0 1000 380" role="img" aria-label="보유 종목 비중 트리맵">
+      {% for b in treemap %}
+      <g>
+        <title>{{ b.tooltip }}</title>
+        <rect x="{{ b.x }}" y="{{ b.y }}" width="{{ b.w }}" height="{{ b.h }}"
+              fill="{{ b.fill }}" stroke="#ffffff" stroke-width="2"/>
+        {% if b.show_label %}
+        <text class="{{ b.label_class }}" x="{{ b.x + 8 }}" y="{{ b.y + 20 }}"
+              fill="{{ b.text_fill }}" font-size="13" font-weight="500">{{ b.label }}</text>
+        {% if b.show_pct %}
+        <text class="tm-mono" x="{{ b.x + 8 }}" y="{{ b.y + 37 }}"
+              fill="{{ b.text_fill }}" font-size="11" opacity="0.85">{{ b.pct }}%</text>
+        {% endif %}
+        {% if b.show_new %}
+        <rect x="{{ b.x + 8 }}" y="{{ b.y + 27 }}" width="34" height="15" rx="3" fill="#ffffff"/>
+        <text class="tm-mono" x="{{ b.x + 25 }}" y="{{ b.y + 38 }}" fill="{{ b.fill }}"
+              font-size="10" font-weight="500" text-anchor="middle">NEW</text>
+        {% endif %}
+        {% endif %}
+      </g>
+      {% endfor %}
+    </svg>
+    <div class="tm-legend">
+      {% if treemap_has_prev %}
+      <span><i style="background:#b91c1c"></i>신규 매수 (NEW)</span>
+      <span><i style="background:#d23f3f"></i>비중 확대</span>
+      <span><i style="background:#1e58c8"></i>비중 축소</span>
+      <span><i style="background:#888888"></i>변화 없음</span>
+      {% else %}
+      <span class="tm-sub">직전 분기 데이터 없음 — 증감 미표시</span>
+      {% endif %}
+      <span><i style="background:#c8ccd2"></i>기타</span>
     </div>
   </div>
   {% endif %}

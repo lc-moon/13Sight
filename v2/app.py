@@ -339,6 +339,135 @@ def change_html_shares(current, previous) -> str:
     return base
 
 
+# ── Treemap (포트폴리오 구성) ──────────────────────────────────────────────────
+
+# 증감 방향 → 사각형 색 (한국 주식 컨벤션: 신규/매수=빨강, 매도=파랑)
+_TM_FILL = {
+    "new":  "#b91c1c",  # 신규 (up-strong)
+    "up":   _COLOR_UP,  # 비중 확대
+    "down": _COLOR_DOWN, # 비중 축소
+    "flat": "#888888",  # 변화 없음
+    "other": "#c8ccd2", # 기타 (꼬리 종목 묶음)
+}
+
+
+def _tm_layout(sizes, x, y, dx, dy):
+    """현재 빈 사각형(dx,dy)에 sizes를 한 줄(행 또는 열)로 배치한 좌표 목록."""
+    covered = sum(sizes)
+    rects = []
+    if dx >= dy:  # 세로로 쌓는 행 (폭 고정)
+        width = covered / dy
+        for s in sizes:
+            rects.append((x, y, width, s / width))
+            y += s / width
+    else:         # 가로로 쌓는 열 (높이 고정)
+        height = covered / dx
+        for s in sizes:
+            rects.append((x, y, s / height, height))
+            x += s / height
+    return rects
+
+
+def _tm_worst(sizes, dx, dy):
+    """한 줄 배치 시 가장 나쁜(1에서 먼) 종횡비."""
+    return max(max(w / h, h / w) for (_, _, w, h) in _tm_layout(sizes, 0, 0, dx, dy))
+
+
+def _tm_leftover(sizes, x, y, dx, dy):
+    covered = sum(sizes)
+    if dx >= dy:
+        width = covered / dy
+        return x + width, y, dx - width, dy
+    height = covered / dx
+    return x, y + height, dx, dy - height
+
+
+def _tm_squarify(sizes, x, y, dx, dy):
+    """squarified treemap — sizes(내림차순, 면적)로 좌표 계산."""
+    if not sizes or dx <= 0 or dy <= 0:
+        return []
+    if len(sizes) == 1:
+        return _tm_layout(sizes, x, y, dx, dy)
+    i = 1
+    while i < len(sizes) and _tm_worst(sizes[:i], dx, dy) >= _tm_worst(sizes[: i + 1], dx, dy):
+        i += 1
+    current, remaining = sizes[:i], sizes[i:]
+    lx, ly, ldx, ldy = _tm_leftover(current, x, y, dx, dy)
+    return _tm_layout(current, x, y, dx, dy) + _tm_squarify(remaining, lx, ly, ldx, ldy)
+
+
+def _tm_block(it, x, y, w, h):
+    """squarify 좌표 + 색·라벨·툴팁을 합쳐 최종 블록 dict 생성."""
+    is_new = it["direction"] == "new"
+    if it["direction"] == "other":
+        tooltip = f'기타 {it.get("count", 0)}개 종목 · {it["pct"]}%'
+    else:
+        cn = it.get("company_name") or ""
+        tooltip = f'{it["label"]} · {it["pct"]}%' + (f' · {cn}' if cn else "")
+    return {
+        **it,
+        "x": round(x, 2), "y": round(y, 2), "w": round(w, 2), "h": round(h, 2),
+        "fill": _TM_FILL[it["direction"]],
+        "text_fill": "#4d4d4d" if it["direction"] == "other" else "#ffffff",
+        "show_label": w >= 46 and h >= 28,
+        "show_pct": (not is_new) and w >= 52 and h >= 46,
+        "show_new": is_new and w >= 46 and h >= 44,  # 신규: 티커 아래 NEW 라벨
+        "tooltip": tooltip,
+    }
+
+
+def build_treemap(latest_by_cusip, prev_by_cusip, no_prev,
+                  width=1000.0, height=380.0, top_n=24):
+    """기관 최신 분기 보유 종목 → 비중 트리맵 블록 목록.
+
+    크기 = 평가금액, 색 = 직전 분기 대비 보유수량 증감. 상위 top_n개만 개별 표시하고
+    나머지 꼬리 종목은 '기타' 한 블록으로 묶는다.
+    """
+    rows = sorted(latest_by_cusip.values(), key=lambda r: -(r[3] or 0))
+    rows = [r for r in rows if (r[3] or 0) > 0]
+    total = sum((r[3] or 0) for r in rows)
+    if not rows or total <= 0:
+        return []
+
+    items = []
+    for company_name, cusip, ticker, value, shares, _ in rows[:top_n]:
+        if no_prev:
+            direction = "flat"
+        elif cusip not in prev_by_cusip:
+            direction = "new"
+        else:
+            ps = prev_by_cusip[cusip][4] or 0
+            cs = shares or 0
+            direction = "up" if cs > ps else "down" if cs < ps else "flat"
+        items.append({
+            "label": ticker or cusip, "cusip": cusip, "value": value or 0,
+            "company_name": company_name or "",
+            "pct": round((value or 0) / total * 100, 1),
+            "direction": direction, "label_class": "tm-mono",
+        })
+
+    tail = rows[top_n:]
+    other_val = sum((r[3] or 0) for r in tail) if tail else 0
+
+    # 기타는 비중에 비례한 폭의 '오른쪽 전체높이 칼럼'으로 고정 배치.
+    # (크기와 무관하게 항상 우측 — squarify 정렬에 휩쓸려 좌측으로 가지 않게)
+    scale  = (width * height) / total
+    other_w = (other_val / total) * width if other_val > 0 else 0.0
+    main_w  = width - other_w
+
+    items.sort(key=lambda it: -it["value"])  # squarify는 내림차순 가정
+    rects = _tm_squarify([it["value"] * scale for it in items], 0.0, 0.0, main_w, height)
+
+    blocks = [_tm_block(it, x, y, w, h) for it, (x, y, w, h) in zip(items, rects)]
+    if other_val > 0:
+        blocks.append(_tm_block({
+            "label": "기타", "cusip": "", "value": other_val,
+            "pct": round(other_val / total * 100, 1),
+            "direction": "other", "label_class": "tm-sans", "count": len(tail),
+        }, main_w, 0.0, other_w, height))
+    return blocks
+
+
 # ── Routes ───────────────────────────────────────────────────────────────────
 
 @app.route("/api/search")
@@ -442,6 +571,8 @@ def institution_detail(cik):
     prev_by_cusip   = {row[1]: row for row in (fetch_holdings(cik_raw, prev_date) if prev_date else [])}
     no_prev = not prev_by_cusip
 
+    treemap = build_treemap(latest_by_cusip, prev_by_cusip, no_prev)
+
     tab = request.args.get("tab", "all")
     TAB_DEFS = [
         ("all",       "전체"),
@@ -523,6 +654,8 @@ def institution_detail(cik):
         aum_prev_pct=aum_prev_pct,
         aum_direction=aum_direction,
         holdings_count=len(latest_by_cusip),
+        treemap=treemap,
+        treemap_has_prev=not no_prev,
         tabs=tabs,
         display_rows=display_rows,
         latest_label=quarter_label(latest_date),
