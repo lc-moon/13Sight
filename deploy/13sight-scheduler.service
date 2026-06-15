@@ -1,0 +1,14 @@
+[Unit]
+Description=13Sight quarterly collector scheduler (APScheduler)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+User=opc
+WorkingDirectory=/opt/13sight
+ExecStart=/opt/13sight/venv/bin/python /opt/13sight/scheduler.py
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

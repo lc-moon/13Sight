@@ -1,0 +1,17 @@
+[Unit]
+Description=13Sight Flask web (gunicorn)
+After=network.target postgresql.service
+Wants=postgresql.service
+
+[Service]
+# Oracle Linux 기본 사용자는 opc, Ubuntu는 ubuntu. 환경에 맞게 변경.
+User=opc
+WorkingDirectory=/opt/13sight
+# .env 는 utils.load_env() 가 직접 읽으므로 EnvironmentFile 불필요.
+# gunicorn 은 v2/app.py 의 app 객체를 로드한다 (__main__ 블록을 안 타므로 debug 비활성).
+ExecStart=/opt/13sight/venv/bin/gunicorn --chdir /opt/13sight/v2 --workers 3 --bind 0.0.0.0:5001 app:app
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
