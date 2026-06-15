@@ -1,5 +1,7 @@
 """분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 collect_institutions.py를 자동 실행하는 APScheduler 스케줄러."""
 import os
+import sys
+import time
 import subprocess
 from datetime import datetime
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -64,7 +66,7 @@ def check_and_run():
         aa_py_path = os.path.join(script_dir, 'collect_institutions.py')
 
         try:
-            result = subprocess.run(['python', aa_py_path, str(year), str(quarter)], capture_output=True, text=True)
+            result = subprocess.run([sys.executable, aa_py_path, str(year), str(quarter)], capture_output=True, text=True)
             print(f"[{timestamp}] collect_institutions.py 실행 완료")
             if result.stdout:
                 print(f"[{timestamp}] 출력: {result.stdout.strip()}")
@@ -95,9 +97,9 @@ def main():
     print("=" * 60)
 
     try:
-        # 스케줄러를 계속 실행
+        # 스케줄러를 계속 실행 (busy-loop 대신 sleep으로 CPU 점유 방지)
         while True:
-            pass
+            time.sleep(3600)
     except KeyboardInterrupt:
         print("\n스케줄러를 종료합니다.")
         scheduler.shutdown()
