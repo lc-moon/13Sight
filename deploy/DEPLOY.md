@@ -64,11 +64,24 @@ DB는 기본 `postgres`를 그대로 사용한다(앱 기본값과 일치). 로�
 
 ---
 
-## 5단계 — 코드 배포 [VM]
+## 5단계 — 코드 배포 [로컬 → VM]
+
+> GitHub 저장소가 **비공개**라 VM에서 `git clone`은 인증 때문에 실패한다
+> (`could not read Username for 'https://github.com'`). 그래서 **로컬 코드를 tar로 묶어
+> scp로 보낸다.** (institution_names_kr.json 포함, .git/venv/.env/덤프는 제외.)
 
 ```bash
-# [VM] /opt/13sight 에 클론 (institution_names_kr.json 포함되어 따라옴)
-sudo git clone https://github.com/lc-moon/13Sight.git /opt/13sight
+# [로컬] 프로젝트 루트에서 코드 압축 후 전송
+tar czf /tmp/13sight_code.tar.gz \
+  --exclude='.git' --exclude='venv' --exclude='__pycache__' \
+  --exclude='.env' --exclude='13sight.sql' --exclude='.claude' .
+scp -i <키.key> /tmp/13sight_code.tar.gz ubuntu@<VM공인IP>:/tmp/
+```
+
+```bash
+# [VM] /opt/13sight 에 풀기
+sudo rm -rf /opt/13sight && sudo mkdir -p /opt/13sight
+sudo tar xzf /tmp/13sight_code.tar.gz -C /opt/13sight
 sudo chown -R ubuntu:ubuntu /opt/13sight
 cd /opt/13sight
 
@@ -77,6 +90,8 @@ python3 -m venv venv
 ./venv/bin/pip install --upgrade pip
 ./venv/bin/pip install -r requirements.txt
 ```
+> 저장소를 공개로 바꾸면 `git clone https://github.com/lc-moon/13Sight.git /opt/13sight`로
+> 대체 가능. 코드 업데이트 시에도 비공개인 한 위 tar+scp 방식을 쓴다.
 
 ## 6단계 — .env 작성 [VM]
 
@@ -154,9 +169,19 @@ systemctl status 13sight-scheduler --no-pager
 
 OCI Ubuntu 이미지는 **iptables로 인바운드를 기본 차단**한다. 2단계(보안목록)와 별개로 VM 안에서도 열어야 한다.
 
+> ⚠️ **규칙 순서가 핵심.** INPUT 체인 끝에 `REJECT all`이 있어서, 5001 ACCEPT를
+> 그 **뒤**에 넣으면 효과가 없다(패킷이 REJECT에 먼저 걸림). 반드시 REJECT **앞**에 삽입한다.
+> REJECT의 위치는 VM마다 다를 수 있으니(예: 5번 또는 6번) 먼저 줄번호를 확인하고 그 자리에 끼워 넣는다.
+
 ```bash
-# [VM] 5001 포트 허용 후 영구 저장
-sudo iptables -I INPUT 6 -m state --state NEW -p tcp --dport 5001 -j ACCEPT
+# [VM] 현재 INPUT 체인에서 REJECT 줄번호 확인
+sudo iptables -L INPUT -n --line-numbers
+# 예) 5번이 'REJECT all ...' 이면 5번 자리에 삽입 → REJECT가 6번으로 밀림
+sudo iptables -I INPUT 5 -m state --state NEW -p tcp --dport 5001 -j ACCEPT
+# 확인: 5001 ACCEPT가 REJECT 줄보다 위에 있어야 함
+sudo iptables -L INPUT -n --line-numbers
+
+# 영구 저장
 sudo apt install -y iptables-persistent   # 저장 여부 물으면 Yes
 sudo netfilter-persistent save
 ```
