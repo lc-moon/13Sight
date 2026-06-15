@@ -101,20 +101,25 @@ GEMINI_API_KEY=
 
 ## 7단계 — 데이터 이전 (로컬 → VM) [로컬 → VM]
 
-```powershell
-# [로컬] PowerShell. pg_dump가 PATH에 없으면 PostgreSQL 설치폴더 bin 경로로 실행.
-# 4개 테이블을 커스텀 포맷으로 덤프 (비밀번호 물어보면 로컬 postgres 비번 입력)
-pg_dump -U postgres -h localhost -d postgres `
-  -t all_institutions -t top100_institutions -t consensus -t holdings `
-  -Fc -f 13sight.dump
+> **버전 주의**: 로컬은 PostgreSQL 18, VM(Ubuntu 22.04 기본)은 14다. 메이저 버전이
+> 달라 커스텀 포맷(`-Fc`)+`pg_restore`는 복원이 안 된다. 그래서 **버전 독립적인
+> 평문 SQL(`-Fp`)을 `psql`로 복원**한다. 덤프 파일(`13sight.sql`, 약 111MB)은
+> 프로젝트 루트에 이미 생성해 둠.
 
-# VM으로 전송
-scp -i <키.key> 13sight.dump ubuntu@<VM공인IP>:/tmp/
+```powershell
+# [로컬] (이미 만들어둔 13sight.sql 사용. 다시 떠야 하면 아래 명령. PGPASSWORD에 로컬 비번)
+# $env:PGPASSWORD="로컬_postgres_비번"
+# pg_dump -U postgres -h localhost -d postgres --no-owner --no-privileges `
+#   -t all_institutions -t top100_institutions -t consensus -t holdings `
+#   -Fp -f 13sight.sql
+
+# VM으로 전송 (프로젝트 루트에서 실행)
+scp -i <키.key> 13sight.sql ubuntu@<VM공인IP>:/tmp/
 ```
 
 ```bash
-# [VM] 복원 (postgres 비번 = 4단계 값)
-pg_restore -U postgres -h localhost -d postgres --no-owner /tmp/13sight.dump
+# [VM] 복원 (postgres 비번 = 4단계 값). psql로 평문 SQL 적용.
+psql -U postgres -h localhost -d postgres -f /tmp/13sight.sql
 
 # 확인
 sudo -u postgres psql -d postgres -c "SELECT

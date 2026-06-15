@@ -3,3 +3,7 @@ __pycache__/
 *.pyo
 .env
 .claude/
+
+# DB 덤프 (데이터 이전용 로컬 산출물 — 트래킹 금지)
+13sight.sql
+*.dump
