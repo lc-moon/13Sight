@@ -1,0 +1,122 @@
+[
+  {
+    "rank": 1,
+    "cusip": "532457108",
+    "ticker": "LLY",
+    "company_name": "ELI LILLY & CO",
+    "composite_score": 82.1,
+    "institution_count": 53,
+    "buy_amount_usd": 55485926465,
+    "price_2025q1_end": 818.43,
+    "price_current": 1122.5,
+    "return_pct": 37.15
+  },
+  {
+    "rank": 2,
+    "cusip": "808513105",
+    "ticker": "SCHW",
+    "company_name": "SCHWAB CHARLES CORP",
+    "composite_score": 77.96,
+    "institution_count": 64,
+    "buy_amount_usd": 11862949884,
+    "price_2025q1_end": 77.05,
+    "price_current": 93.67,
+    "return_pct": 21.57
+  },
+  {
+    "rank": 3,
+    "cusip": "69608A108",
+    "ticker": "PLTR",
+    "company_name": "PALANTIR TECHNOLOGIES INC",
+    "composite_score": 70.31,
+    "institution_count": 60,
+    "buy_amount_usd": 6498753500,
+    "price_2025q1_end": 84.4,
+    "price_current": 133.25,
+    "return_pct": 57.88
+  },
+  {
+    "rank": 4,
+    "cusip": "N72482206",
+    "ticker": "QGEN",
+    "company_name": "QIAGEN NV",
+    "composite_score": 69.71,
+    "institution_count": 64,
+    "buy_amount_usd": 4055690938,
+    "price_2025q1_end": 39.94,
+    "price_current": 37.22,
+    "return_pct": -6.81
+  },
+  {
+    "rank": 5,
+    "cusip": "601137102",
+    "ticker": "MRP",
+    "company_name": "MILLROSE PPTYS INC",
+    "composite_score": 69.34,
+    "institution_count": 69,
+    "buy_amount_usd": 1424531294,
+    "price_2025q1_end": 23.66,
+    "price_current": 28.7,
+    "return_pct": 21.3
+  },
+  {
+    "rank": 6,
+    "cusip": "25809K105",
+    "ticker": "DASH",
+    "company_name": "DOORDASH INC",
+    "composite_score": 68.99,
+    "institution_count": 60,
+    "buy_amount_usd": 6419142104,
+    "price_2025q1_end": 182.77,
+    "price_current": 170.03,
+    "return_pct": -6.97
+  },
+  {
+    "rank": 7,
+    "cusip": "02079K305",
+    "ticker": "GOOGL",
+    "company_name": "ALPHABET INC",
+    "composite_score": 67.6,
+    "institution_count": 53,
+    "buy_amount_usd": 12188032804,
+    "price_2025q1_end": 154.01,
+    "price_current": 373.25,
+    "return_pct": 142.35
+  },
+  {
+    "rank": 8,
+    "cusip": "80004C200",
+    "ticker": "SNDK",
+    "company_name": "SANDISK CORP",
+    "composite_score": 67.47,
+    "institution_count": 65,
+    "buy_amount_usd": 3308491187,
+    "price_2025q1_end": 47.61,
+    "price_current": 1991.55,
+    "return_pct": 4083.05
+  },
+  {
+    "rank": 9,
+    "cusip": "023135106",
+    "ticker": "AMZN",
+    "company_name": "AMAZON COM INC",
+    "composite_score": 66.85,
+    "institution_count": 50,
+    "buy_amount_usd": 23146758611,
+    "price_2025q1_end": 190.26,
+    "price_current": 246.0,
+    "return_pct": 29.3
+  },
+  {
+    "rank": 10,
+    "cusip": "11135F101",
+    "ticker": "AVGO",
+    "company_name": "BROADCOM INC",
+    "composite_score": 66.74,
+    "institution_count": 51,
+    "buy_amount_usd": 17798134034,
+    "price_2025q1_end": 166.08,
+    "price_current": 376.71,
+    "return_pct": 126.82
+  }
+]

@@ -29,10 +29,20 @@ python scheduler.py
 
 ## 배포 방식
 
-**Oracle Cloud Always Free VM** (단일 서버) 사용 예정.
+**Oracle Cloud Always Free VM** (단일 서버) — **현재 운영 중**.
 Flask 웹서버 + APScheduler + PostgreSQL을 VM 한 대에서 함께 실행한다.
 단일 서버이므로 `collect_institutions.py`가 생성하는 `institution_names_kr.json`을
 `app.py`가 같은 경로에서 바로 읽을 수 있다 (파일 동기화 불필요).
+
+| 항목 | 값 |
+|---|---|
+| **프로덕션 URL** | http://161.33.143.61:5001 |
+| **VM 접속** | `ssh -i ~/Downloads/ssh-key-2026-06-15.key ubuntu@161.33.143.61` |
+| **코드 경로 (VM)** | `/opt/13sight/` |
+| **재배포** | 프로젝트 루트에서 `bash deploy/redeploy.sh` (스케줄러 포함: `--scheduler` 옵션) |
+
+> GitHub repo가 비공개라 VM에서 git clone이 안 됨. 코드 업데이트는 항상 로컬에서 `redeploy.sh` 실행.
+> SSH 키(`ssh-key-2026-06-15.key`)는 git에 없으므로 포맷 시 별도 백업 또는 Oracle Cloud 콘솔에서 재발급 필요.
 
 ## 환경 변수 (.env)
 
@@ -58,6 +68,8 @@ GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translat
 | `app.py` · `templates/` | **(동결, v1)** 구버전 웹 레이어. 사용·수정하지 않음 |
 | `build_consensus.py` | top100 기관의 공통 매수 종목을 집계·점수화하여 `consensus` 테이블에 저장. 종합·기관수·매수금액·비중변화 4개 지표 산출. |
 | `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일)에 `collect_institutions.py` 자동 실행 |
+| `test/backtest_2025q1.py` | 백테스트 스크립트. 현재 top100 기관의 25Q1(2025-03-31) vs 24Q4(2024-12-31) 13F를 SEC에서 직접 수집해 consensus 계산 후 수익률 검증. DB 읽기 전용, 결과는 `test/top10_consensus.json`에 저장. `holdings_cache.json`(30MB) 캐시를 생성하므로 재실행 시 빠름. |
+| `test/top10_consensus.json` | 백테스트 결과 — 25Q1 기준 통합분석 Top 10 종목과 실제 수익률(2026-06-16 기준). 평균 +47%(SNDK 제외), SNDK(SanDisk) +4,083% 포함. |
 
 ## 페이지 구성 및 용어
 

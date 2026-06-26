@@ -7,3 +7,6 @@ __pycache__/
 # DB 덤프 (데이터 이전용 로컬 산출물 — 트래킹 금지)
 13sight.sql
 *.dump
+
+# test/ 백테스트 캐시 (30MB SEC 수집 데이터 — 재수집 가능)
+test/holdings_cache.json
