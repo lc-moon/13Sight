@@ -82,11 +82,11 @@ GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translat
 | 파일 | 역할 |
 |---|---|
 | `collect_institutions.py` | SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액(tableValueTotal)을 수집 → `all_institutions` 테이블 TRUNCATE+INSERT, 상위 100개를 `top100_institutions` 테이블에 rank 포함 저장 |
-| `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT. OpenFIGI API로 CUSIP→ticker 매핑. |
+| `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT. OpenFIGI API로 CUSIP→ticker 매핑. 수집 후 기업 액션 정규화(90X/95X 변종 → CUSIP 재발급 통합 → 분할 보정) 자동 실행. |
 | `build_consensus.py` | top100 기관의 공통 매수 종목을 집계·점수화하여 `consensus` 테이블에 저장. 종합·기관수·매수금액·비중변화 4개 지표 산출. |
 | `translate_institutions.py` | `all_institutions` 기관명을 Gemini API로 한국어 번역 → `institution_names_kr.json` 갱신. 분기 수집 후 필요 시 수동 실행. |
 | `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일) 이후 `collect_institutions` → `collect_holdings` → `build_consensus`를 순서대로 자동 실행. 앞 단계 실패(종료코드≠0) 시 중단. `collect_institutions`는 수집 0건이면 DB를 비우지 않고 실패 종료하며, 번역 실패는 파이프라인을 막지 않음 |
-| `utils.py` | 공통 유틸리티. DB_CONFIG(환경변수 로드), sec_session()(재시도 포함 HTTP 세션), prev_quarter_date(), canonical_cusip()/is_cusip_event()(CUSIP 이벤트 처리), CUSIP_ALIAS/CUSIP_EVENT 테이블 |
+| `utils.py` | 공통 유틸리티. DB_CONFIG(환경변수 로드), sec_session()(재시도 포함 HTTP 세션), prev_quarter_date(), canonical_cusip()/is_cusip_event()(CUSIP 이벤트 처리), CUSIP_ALIAS/CUSIP_EVENT 테이블, CONSENSUS_EXCLUDE/is_consensus_excluded()(분사·합병·상장 이전 종목 consensus 제외) |
 | `institution_names_kr.json` | 기관명 한국어 번역 캐시. `translate_institutions.py`가 생성, `v2/app.py`가 기관 목록 표시 시 로드. git 추적됨. **VM 파일이 기준** — VM 분기 수집이 갱신하므로 `redeploy.sh`는 이 파일을 덮어쓰지 않음(로컬 최신화가 필요하면 VM에서 scp로 받아옴). |
 | `v2/app.py` | **(활성)** Flask 웹 서버. `/`(검색+기관 목록), `/institution/<cik>`(기관 분석), `/stock/<cusip>`(종목 분석), `/consensus`(통합분석), `/api/search`(기관·종목 자동완성 JSON). 포트 5001 |
 | `app.py` · `templates/` | **(동결, v1)** 구버전 웹 레이어. 사용·수정하지 않음 |
@@ -172,6 +172,11 @@ CREATE TABLE holdings (
 **CUSIP 합산**: 같은 종목이 SOLE/SHARED/NONE 재량 구분으로 여러 행일 수 있어 `save_holdings()`에서 CUSIP 기준으로 합산 후 저장.
 
 **폰트(한글 금지 폰트)**: `--font-mono`(JetBrains Mono)는 한글 글리프가 없어 한글에 적용하면 깨진 폴백 폰트로 렌더링된다. 한글이 들어가는 모든 텍스트(캡션·라벨·제목 등)에는 `--font-sans`를 사용한다. `--font-mono`는 숫자·CUSIP·티커·순위·점수 등 **ASCII 전용** 요소에만 쓴다.
+
+**기업 액션 처리** (분기 비교 왜곡 방지 — 상세는 `issues.md` 8번):
+- 자동 (`collect_holdings.py`): ① 같은 발행사(CUSIP 앞 6자리) 안의 CUSIP 재발급을 새 CUSIP으로 통합(`normalize_cusip_changes`), ② 주식 분할·병합을 감지해 직전 분기 shares를 분할 비율로 환산(`normalize_splits`). 둘 다 재실행해도 이중 적용되지 않음.
+- 수동 (`utils.py`, 분기 업데이트 후 consensus 상위권 점검 시 등록): 발행사 코드까지 바뀐 CUSIP 변경 → `CUSIP_ALIAS`, 분사·합병·해외 상장사 미국 이전 → `CONSENSUS_EXCLUDE`(이벤트 분기에만 해당 종목 consensus 제외, 다음 분기 자동 복귀). 신규 상장(IPO)은 실제 매수이므로 등록하지 않음.
+- 점검 신호: 직전 분기 보유 기관이 0곳이거나 현재의 25% 이하인 상위 종목(분사/IPO/상장 이전 구분 필요), 수량 그대로인 기관이 10% 이하인 종목(합병·분할 의심).
 
 **consensus 집계 로직** (`build_consensus.py`): `curr_shares > prev_shares`인 기관만 매수로 판단하여 세 지표를 계산한다.
 - `total_buy_amount`: `round(curr_val * (curr_shares - prev_shares) / curr_shares)` — 신규 취득 주식의 현재 평가금액 합산 (가격 상승분 제외)

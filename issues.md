@@ -232,3 +232,37 @@ v2 템플릿(`base.html`·`index.html`·`institution.html`·`consensus.html`·`s
 - `requirements.txt`: `google-genai==2.31.0`으로 교체.
 - `redeploy.sh`: `institution_names_kr.json`을 tar에서 제외 (VM 수집이 갱신한 번역을 재배포가 덮어쓰지 않도록).
 - 2026-10-18 VM에서 2026 Q2 파이프라인 수동 실행으로 데이터 복구.
+
+---
+
+## 8. 주식 분할·분사·합병 등 기업 액션으로 consensus 순위 왜곡 (2026 Q2) [조치 완료 / 일부 수동]
+
+### 현상
+2026 Q2 첫 집계에서 종합 순위 상위권이 실제 매수가 아닌 기업 액션 종목으로 채워짐.
+- 1위 KLAC(94개 기관 '매수'), 3위 BKNG, 4위 CVNA — 주식 분할로 전 기관 주식 수 증가
+- HON·DD(CUSIP 재발급), HONA·FDXF(분사), DVN(Coterra 합병 주식교환), CCL(Carnival plc 통합)
+
+### 원인
+매수 판단이 `curr_shares > prev_shares`라 분할 시 전 기관이 매수로 잡히고,
+CUSIP이 바뀌면 '구 종목 전량 매도 + 신 종목 신규 매수'로, 분사·합병으로 받은 주식은 신규 매수로 집계됨.
+
+### 조치
+**자동** (`collect_holdings.py`, 수집 후 자동 실행):
+- `normalize_cusip_changes`: 같은 발행사(앞 6자리) 안에서 구 CUSIP 보유 기관이 직전 대비 20% 이하로 사라지고
+  새 CUSIP이 직전 분기 20% 이하 → 현재 다수로 나타나면 1:1로 짝지어 통합. `CUSIP_ALIAS` 수동 매핑도 함께 적용.
+  2026 Q2: 25건 자동(HON·DD·Thomson Reuters 및 소형주 역분할 재발급) + 수동 4건.
+- `normalize_splits`: 양 분기 보유 기관 20곳 이상인 종목 중, 수량 그대로(±10%)인 기관이 거의 없고
+  특정 분할 비율(±10%)에 기관이 몰린 종목을 분할로 판정해 직전 분기 shares에 비율을 곱함.
+  판정 기준: 그대로 3% 이하 & 집중 25% 이상, 또는 그대로 10% 이하 & 집중 40% 이상
+  (DVN 합병은 그대로 6%·집중 32%로 배제). 2026 Q2: 17건(KLAC 10:1, BKNG 25:1, CVNA 5:1, HON 1:2, DD 1:3, ETF 다수).
+
+**수동** (`utils.py`):
+- `CUSIP_ALIAS`: 발행사 코드까지 바뀐 경우 — Carnival, Ascendis(ADS→보통주), Bitfarms→Keel, Seabridge.
+- `CONSENSUS_EXCLUDE`: 13F만으로 '받은 주식'과 매수를 구분할 수 없는 경우 — 해당 분기에 종목 전체를 consensus에서 제외
+  (진짜 매수분도 함께 빠지는 한계). 2026 Q2: HONA·FDXF·VGNT(분사), DVN·CCL(합병), WSE·OGC(미국 상장 이전).
+- 신규 상장(SPCX·CBRS·FRVO·QNT·ARXS)은 실제 매수라 그대로 반영.
+
+### 한계 / 향후
+- 분사·합병·상장 이전은 분기마다 수동 등록 필요. 후보(직전 분기 보유 0곳 또는 현재의 25% 이하, 수량 그대로 10% 이하)를
+  추려 LLM(+검색)으로 분류하는 자동화를 검토할 수 있음.
+- 보유 기관 20곳 미만 종목의 분할은 보정되지 않음(consensus 상위권 영향 적음).
