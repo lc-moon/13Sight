@@ -127,10 +127,36 @@
   }
   .consensus-filter:focus { border-color: var(--color-link); }
   .consensus-filter::placeholder { color: var(--color-mute); }
+
+  /* ── 현재가 · 분기 최저가 대비 ── */
+  .consensus-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .price-toggle {
+    display: inline-flex; align-items: center; height: 38px; padding: 0 14px;
+    font-family: var(--font-sans); font-size: var(--fs-body-sm); color: var(--color-body);
+    background: var(--color-canvas); border: 1px solid var(--color-hairline-strong);
+    border-radius: var(--radius-md); white-space: nowrap;
+  }
+  .price-toggle:hover { border-color: #0F6E56; color: #0F6E56; }
+  .price-toggle.on { background: #0F6E56; border-color: #0F6E56; color: #fff; }
+  .price-note { font-family: var(--font-sans); font-size: var(--fs-caption); color: var(--color-mute); }
+  .px { font-family: var(--font-mono); }
+  .px-pct { font-family: var(--font-mono); font-size: 12px; color: var(--color-mute); margin-left: 6px; }
+  .px-pct.below {
+    color: #0F6E56; background: rgba(15, 110, 86, 0.10);
+    padding: 1px 5px; border-radius: var(--radius-xs); font-weight: var(--fw-medium);
+  }
+  .px-ipo {
+    font-family: var(--font-sans); font-size: 10px; color: var(--color-mute);
+    border: 1px solid var(--color-hairline-strong); border-radius: var(--radius-xs);
+    padding: 0 4px; margin-left: 4px;
+  }
 </style>
 {% endblock %}
 
 {% block content %}
+{% macro price_cell(p) -%}
+{% if p %}<span class="px">{{ p.last }}</span><span class="px-pct{% if p.below %} below{% endif %}">{{ p.pct }}</span>{% if p.ipo %}<span class="px-ipo" title="분기 중 신규 상장 — 공모가로 배정받은 기관은 장내 최저가보다 싸게 샀을 수 있음">상장</span>{% endif %}{% else %}<span class="px-pct">—</span>{% endif %}
+{%- endmacro %}
 <div class="page-container">
   <div class="breadcrumb"><a href="/">← 목록으로</a></div>
 
@@ -144,18 +170,24 @@
       {% if t.active %}
       <span class="tab active">{{ t.label }}</span>
       {% else %}
-      <a class="tab" href="/consensus?tab={{ t.key }}">{{ t.label }}</a>
+      <a class="tab" href="/consensus?tab={{ t.key }}{% if below %}&below=1{% endif %}">{{ t.label }}</a>
       {% endif %}
     {% endfor %}
   </nav>
 
-  {% if not rows %}
+  {% if not rows and not below %}
   <div class="no-data">데이터 없음 — build_consensus.py를 먼저 실행하세요.</div>
   {% else %}
   <div class="consensus-toolbar">
     <input type="text" id="consensusFilter" class="consensus-filter"
            placeholder="티커·종목명 검색" autocomplete="off">
+    <a class="price-toggle{% if below %} on{% endif %}"
+       href="/consensus?tab={{ tab }}{% if not below %}&below=1{% endif %}">분기 최저가 아래만</a>
+    <span class="price-note">{{ report_label }} 분기 중 최저가보다 현재가가 낮은 종목 — 그 분기에 장내 매수한 기관보다 싸게 살 수 있는 구간</span>
   </div>
+  {% if not rows %}
+  <div class="no-data">현재가가 {{ report_label }} 분기 최저가 아래인 종목이 없습니다.</div>
+  {% else %}
   <div class="card" style="margin-bottom: var(--space-5xl)">
     <div class="table-scroll">
       <table class="data-table">
@@ -169,6 +201,7 @@
             <th class="num" style="width:110px">기관수 순위</th>
             <th class="num" style="width:110px">매수금액 순위</th>
             <th class="num" style="width:110px">비중변화 순위</th>
+            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
           </tr>
           {% elif tab == "inst" %}
           <tr>
@@ -176,6 +209,7 @@
             <th style="width:100px">티커</th>
             <th>종목명</th>
             <th class="num">매수 기관 수</th>
+            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
           </tr>
           {% elif tab == "buy" %}
           <tr>
@@ -183,6 +217,7 @@
             <th style="width:100px">티커</th>
             <th>종목명</th>
             <th class="num">총 매수 금액</th>
+            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
           </tr>
           {% else %}
           <tr>
@@ -190,6 +225,7 @@
             <th style="width:100px">티커</th>
             <th>종목명</th>
             <th class="num">비중 변화 합산</th>
+            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
           </tr>
           {% endif %}
         </thead>
@@ -211,9 +247,10 @@
             <td class="td-sub">{{ row.inst_rank }}</td>
             <td class="td-sub">{{ row.buy_rank }}</td>
             <td class="td-sub">{{ row.weight_rank }}</td>
+            <td class="td-num">{{ price_cell(row.price) }}</td>
           </tr>
           <tr class="detail-row" data-for="{{ row.cusip }}" data-static="1" style="display:none">
-            <td colspan="7">
+            <td colspan="8">
               <div class="detail-panel">
                 <div class="detail-title">종합점수 구성 — {{ row.composite_score }}</div>
                 <div class="composite-body">
@@ -250,6 +287,7 @@
             <td><a href="/stock/{{ row.cusip }}" class="stock-link"><span class="ticker">{{ row.ticker }}</span></a></td>
             <td class="td-name"><a href="/stock/{{ row.cusip }}" class="stock-link">{{ row.company_name }}</a><span class="expand-icon">›</span></td>
             <td class="td-num">{{ row.value }}</td>
+            <td class="td-num">{{ price_cell(row.price) }}</td>
           </tr>
           {% endif %}
           {% endfor %}
@@ -257,6 +295,7 @@
       </table>
     </div>
   </div>
+  {% endif %}
   {% endif %}
 </div>
 

@@ -134,6 +134,40 @@
     box-shadow: 0 0 0 2px var(--color-ink) inset, var(--elevation-2);
   }
   .filter-empty { margin: 0; border: none; }
+
+  /* ── 주가 · 분기 가격대 ── */
+  .px-top { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: var(--space-md); }
+  .px-now {
+    font-family: var(--font-mono); font-size: var(--fs-display-md); font-weight: var(--fw-semibold);
+    color: var(--color-ink); line-height: 1.1;
+  }
+  .px-vs { font-family: var(--font-sans); font-size: var(--fs-body-sm); color: var(--color-body); }
+  .px-vs b { font-family: var(--font-mono); font-weight: var(--fw-medium); }
+  .px-date { font-family: var(--font-sans); font-size: var(--fs-caption); color: var(--color-mute); }
+  .px-badge {
+    font-family: var(--font-sans); font-size: var(--fs-caption); font-weight: var(--fw-medium);
+    color: #fff; background: #0F6E56; padding: 3px 8px; border-radius: var(--radius-xs);
+  }
+  .px-band { display: flex; gap: var(--space-xl); flex-wrap: wrap; margin-bottom: var(--space-md); }
+  .px-band-item { min-width: 96px; }
+  .px-band-label { font-family: var(--font-sans); font-size: var(--fs-caption); color: var(--color-mute); margin-bottom: 2px; }
+  .px-band-value { font-family: var(--font-mono); font-size: var(--fs-body-lg); font-weight: var(--fw-medium); color: var(--color-ink); }
+  .px-band-low .px-band-value { color: #0F6E56; }
+  .px-chart { width: 100%; height: auto; display: block; overflow: visible; }
+  .px-chart .q-shade { fill: var(--color-canvas-soft-2); }
+  .px-chart .line { fill: none; stroke: var(--color-ink); stroke-width: 1.6; vector-effect: non-scaling-stroke; }
+  .px-chart .low-line { stroke: #0F6E56; stroke-width: 1.2; stroke-dasharray: 5 4; vector-effect: non-scaling-stroke; }
+  .px-chart .last-dot { fill: var(--color-ink); }
+  .px-axis { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 11px; color: var(--color-mute); }
+  .px-axis-x { position: relative; height: 16px; font-family: var(--font-sans); font-size: 11px; color: var(--color-mute); }
+  .px-axis-x span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
+  .px-axis-x span.edge-l { transform: none; }
+  .px-axis-x span.edge-r { transform: translateX(-100%); }
+  .px-legend { font-family: var(--font-sans); font-size: var(--fs-caption); color: var(--color-mute); margin-top: 6px; }
+  .px-legend i { display: inline-block; width: 14px; vertical-align: middle; margin: 0 4px 0 10px; }
+  .px-legend .lg-shade { height: 9px; background: var(--color-canvas-soft-2); border: 1px solid var(--color-hairline); }
+  .px-legend .lg-low { border-top: 1.5px dashed #0F6E56; }
+  .px-note { font-family: var(--font-sans); font-size: var(--fs-caption); color: var(--color-mute); line-height: var(--lh-caption); margin-top: var(--space-sm); }
 </style>
 {% endblock %}
 
@@ -161,6 +195,54 @@
       <span class="stock-meta-item">보유 기관 <strong>{{ holders_count }}개</strong></span>
     </div>
   </div>
+
+  <!-- 주가 · 보고 분기 가격대 대비 현재가 -->
+  {% if price %}
+  <div class="cons-card">
+    <div class="cons-caption">주가 · {{ price.quarter }} 분기 가격대 대비</div>
+    <div class="px-top">
+      <span class="px-now">{{ price.last }}</span>
+      <span class="px-vs">분기 최저가 대비 <b>{{ price.pct }}</b></span>
+      {% if price.below %}<span class="px-badge">분기 중 기관 매수가보다 저렴</span>{% endif %}
+      <span class="px-date">{{ price.last_date }} 종가</span>
+    </div>
+    <div class="px-band">
+      <div class="px-band-item px-band-low">
+        <div class="px-band-label">분기 최저가 ({{ price.q_low_date }})</div>
+        <div class="px-band-value">{{ price.q_low }}</div>
+      </div>
+      <div class="px-band-item">
+        <div class="px-band-label">분기 거래량 가중평균</div>
+        <div class="px-band-value">{{ price.q_vwap }}</div>
+      </div>
+      <div class="px-band-item">
+        <div class="px-band-label">분기 최고가</div>
+        <div class="px-band-value">{{ price.q_high }}</div>
+      </div>
+      <div class="px-band-item">
+        <div class="px-band-label">분기말 종가 (13F 평가 기준)</div>
+        <div class="px-band-value">{{ price.q_close }}</div>
+      </div>
+    </div>
+    {% if price.chart %}
+    {% set c = price.chart %}
+    <div class="px-axis"><span>{{ c.y_hi }}</span></div>
+    <svg class="px-chart" viewBox="0 0 {{ c.width }} {{ c.height }}" preserveAspectRatio="none"
+         role="img" aria-label="{{ ticker }} 일봉 종가 추이">
+      <rect class="q-shade" x="{{ c.q_x0 }}" y="0" width="{{ c.q_x1 - c.q_x0 }}" height="{{ c.height }}"/>
+      <line class="low-line" x1="0" y1="{{ c.low_y }}" x2="{{ c.width }}" y2="{{ c.low_y }}"/>
+      <polyline class="line" points="{{ c.points }}"/>
+      <circle class="last-dot" cx="{{ c.last_x }}" cy="{{ c.last_y }}" r="3.5"/>
+    </svg>
+    <div class="px-axis"><span>{{ c.y_lo }}</span></div>
+    <div class="px-axis-x">
+      {% for lx, lb in c.x_labels %}{% set pct = lx / c.width * 100 %}<span class="{% if pct < 4 %}edge-l{% elif pct > 96 %}edge-r{% endif %}" style="left: {{ pct }}%">{{ lb }}</span>{% endfor %}
+    </div>
+    <div class="px-legend"><i class="lg-shade"></i>보고 분기 ({{ price.q_range }})<i class="lg-low"></i>분기 최저가</div>
+    {% endif %}
+    <p class="px-note">13F에는 체결가가 없지만, 그 분기에 장내에서 산 기관의 매수 단가는 분기 최저가보다 낮을 수 없습니다. 현재가가 분기 최저가 아래면 그 분기 어떤 기관보다 싸게 살 수 있는 구간입니다. 가격은 분할 반영 기준이며, 매일 미국 장 마감 후 갱신됩니다.{% if price.ipo %} <b>이 종목은 분기 중 신규 상장되어, 공모가로 배정받은 기관은 장내 최저가보다 싸게 샀을 수 있습니다.</b>{% endif %}</p>
+  </div>
+  {% endif %}
 
   <!-- Summary stats (클릭 시 보유 기관 표 필터링) -->
   <div class="stock-stats">

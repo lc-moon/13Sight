@@ -10,6 +10,7 @@ import psycopg2
 from flask import Flask, request, jsonify, render_template
 from utils import (DB_CONFIG, prev_quarter_date, canonical_cusip, CUSIP_ALIAS,
                    is_cusip_event, cusip_event_label)
+from collect_prices import load_adjusted_bars, quarter_window
 
 # institution_names_kr.json 은 프로젝트 루트에 있음
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -120,7 +121,14 @@ def fetch_holdings(cik: str, report_date=None) -> list:
         conn.close()
 
 
-def fetch_consensus(tab: str) -> list:
+def _has_prices(cur) -> bool:
+    """price_summary 테이블 존재 여부 (collect_prices.py 첫 실행 전에도 페이지가 동작하도록)."""
+    cur.execute("SELECT to_regclass('public.price_summary') IS NOT NULL")
+    return cur.fetchone()[0]
+
+
+def fetch_consensus(tab: str, below: bool = False) -> list:
+    """below=True면 현재가가 보고 분기 최저가 아래인 종목만 반환한다."""
     rank_col = {
         "composite": "composite_rank",
         "inst":      "inst_rank",
@@ -130,19 +138,54 @@ def fetch_consensus(tab: str) -> list:
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
+            if _has_prices(cur):
+                price_cols = "ps.last_close, ps.q_low, ps.listed_in_qtr"
+                price_join = "LEFT JOIN price_summary ps ON ps.cusip = c.cusip"
+                price_cond = "AND ps.last_close < ps.q_low" if below else ""
+            else:
+                price_cols, price_join = "NULL, NULL, NULL", ""
+                price_cond = "AND FALSE" if below else ""
             cur.execute(
                 f"""
-                SELECT composite_rank, inst_rank, buy_rank, weight_rank,
-                       ticker, company_name, cusip,
-                       composite_score, institution_count, total_buy_amount, total_weight_change,
-                       inst_score, buy_score, weight_score
-                FROM consensus
-                WHERE {rank_col} IS NOT NULL
-                ORDER BY {rank_col} ASC
+                SELECT c.composite_rank, c.inst_rank, c.buy_rank, c.weight_rank,
+                       c.ticker, c.company_name, c.cusip,
+                       c.composite_score, c.institution_count, c.total_buy_amount, c.total_weight_change,
+                       c.inst_score, c.buy_score, c.weight_score,
+                       {price_cols}
+                FROM consensus c {price_join}
+                WHERE c.{rank_col} IS NOT NULL {price_cond}
+                ORDER BY c.{rank_col} ASC
                 LIMIT 500
                 """
             )
             return cur.fetchall()
+    finally:
+        conn.close()
+
+
+def fetch_price(cusip: str):
+    """종목의 보고 분기 가격대 요약과 분기 시작 이후 분할 환산 일봉. 가격 데이터 없으면 None."""
+    conn = psycopg2.connect(**DB_CONFIG)
+    try:
+        with conn.cursor() as cur:
+            if not _has_prices(cur):
+                return None
+            cur.execute(
+                """
+                SELECT ticker, report_date, q_low, q_low_date, q_high, q_vwap, q_close,
+                       last_close, last_date, listed_in_qtr
+                FROM price_summary WHERE cusip = %s
+                """,
+                (cusip,),
+            )
+            row = cur.fetchone()
+        if not row:
+            return None
+        keys = ("ticker", "report_date", "q_low", "q_low_date", "q_high", "q_vwap", "q_close",
+                "last_close", "last_date", "listed_in_qtr")
+        summary = dict(zip(keys, row))
+        q_start, _ = quarter_window(summary["report_date"])
+        return summary, load_adjusted_bars(conn, summary["ticker"], q_start)
     finally:
         conn.close()
 
@@ -308,6 +351,53 @@ def _fmt_aum(v) -> str:
     if v >= 1_000_000:
         return f"${v / 1_000_000:.1f}M"
     return f"${v:,.0f}"
+
+
+def _fmt_price(v) -> str:
+    return "-" if v is None else f"${v:,.2f}"
+
+
+def _price_vs_low(last_close, q_low, listed_in_qtr):
+    """현재가와 보고 분기 최저가 비교. 가격 없으면 None.
+    below=True면 그 분기에 장내 매수한 어떤 기관보다 지금 더 싸게 살 수 있다는 뜻."""
+    if not last_close or not q_low:
+        return None
+    return {
+        "last": _fmt_price(last_close),
+        "pct": f"{(last_close / q_low - 1) * 100:+.1f}%",
+        "below": last_close < q_low,
+        "ipo": bool(listed_in_qtr),
+    }
+
+
+def _price_chart(bars, q_start, q_end, q_low, width=1000.0, height=200.0):
+    """일봉 종가 라인 차트 좌표 (분기 구간 음영 + 분기 최저가 기준선). 표시할 일봉이 2개 미만이면 None."""
+    pts = [(d, c) for d, _lo, _hi, c, _vw, _v in bars if c]
+    if len(pts) < 2:
+        return None
+    d0, d1 = pts[0][0], pts[-1][0]
+    span = max((d1 - d0).days, 1)
+    lo = min(min(c for _, c in pts), q_low)
+    hi = max(c for _, c in pts)
+    pad = (hi - lo) * 0.08 or hi * 0.05
+    lo, hi = lo - pad, hi + pad
+
+    def x(d):
+        return round((d - d0).days / span * width, 1)
+
+    def y(v):
+        return round(height - (v - lo) / (hi - lo) * height, 1)
+
+    months = sorted({d.replace(day=1) for d, _ in pts if d.replace(day=1) >= d0})
+    return {
+        "points": " ".join(f"{x(d)},{y(c)}" for d, c in pts),
+        "q_x0": x(max(q_start, d0)), "q_x1": x(min(q_end, d1)),
+        "low_y": y(q_low),
+        "last_x": x(d1), "last_y": y(pts[-1][1]),
+        "y_hi": _fmt_price(hi), "y_lo": _fmt_price(lo),
+        "x_labels": [(x(m), f"{m.month}월") for m in months],
+        "width": width, "height": height,
+    }
 
 
 def _aum_delta_html(curr, prev) -> str:
@@ -728,11 +818,13 @@ def consensus():
         ("weight",    "포트폴리오 비중 변화"),
     ]
 
-    db_rows = fetch_consensus(tab)
+    below = request.args.get("below") == "1"
+    db_rows = fetch_consensus(tab, below)
 
     consensus_rows = []
     for r in db_rows:
-        row = {'ticker': r[4] or '-', 'company_name': r[5], 'cusip': r[6]}
+        row = {'ticker': r[4] or '-', 'company_name': r[5], 'cusip': r[6],
+               'price': _price_vs_low(r[14], r[15], r[16])}
         if tab == "composite":
             i_s, b_s, w_s = r[11], r[12], r[13]
             # 표시 종합점수는 저장된 정수 점수로 재계산해 기여합과 정확히 일치시킴
@@ -766,7 +858,8 @@ def consensus():
         consensus_rows.append(row)
 
     tabs = [{'key': k, 'label': l, 'active': k == tab} for k, l in TAB_DEFS]
-    return render_template('consensus.html', tab=tab, tabs=tabs, rows=consensus_rows)
+    return render_template('consensus.html', tab=tab, tabs=tabs, rows=consensus_rows,
+                           below=below, report_label=_fetch_latest_quarter())
 
 
 @app.route("/stock/<cusip>")
@@ -895,9 +988,29 @@ def stock_detail(cusip):
         for l, c, col in seg_defs
     ] if seg_total else []
 
+    price_vm = None
+    price_data = fetch_price(cusip)
+    if price_data:
+        ps, bars = price_data
+        q_start, q_end = quarter_window(ps["report_date"])
+        vs = _price_vs_low(ps["last_close"], ps["q_low"], ps["listed_in_qtr"])
+        price_vm = {
+            **(vs or {}),
+            "q_low": _fmt_price(ps["q_low"]),
+            "q_low_date": ps["q_low_date"].strftime("%m/%d") if ps["q_low_date"] else "",
+            "q_vwap": _fmt_price(ps["q_vwap"]),
+            "q_high": _fmt_price(ps["q_high"]),
+            "q_close": _fmt_price(ps["q_close"]),
+            "last_date": ps["last_date"].strftime("%Y-%m-%d") if ps["last_date"] else "",
+            "quarter": quarter_label(ps["report_date"]),
+            "q_range": f"{q_start.strftime('%m/%d')}~{q_end.strftime('%m/%d')}",
+            "chart": _price_chart(bars, q_start, q_end, ps["q_low"]),
+        }
+
     return render_template('stock.html',
         found=True,
         cusip=cusip,
+        price=price_vm,
         ticker=ticker,
         company_name=company_name,
         holders_count=len(current),

@@ -1,4 +1,5 @@
-"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 수집 파이프라인(기관 → 보유 종목 → consensus)을 자동 실행하는 APScheduler 스케줄러."""
+"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 수집 파이프라인(기관 → 보유 종목 → consensus)을,
+매일 미국 장 마감 후 주가 갱신(collect_prices)을 자동 실행하는 APScheduler 스케줄러."""
 import os
 import sys
 import time
@@ -50,12 +51,21 @@ def get_quarter(date_obj):
 def run_pipeline(year, quarter, timestamp):
     """collect_institutions → collect_holdings → build_consensus를 순서대로 실행한다.
     앞 단계가 실패(종료코드 ≠ 0)하면 뒤 단계는 실행하지 않는다."""
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    steps = [
+    return run_steps([
         ['collect_institutions.py', str(year), str(quarter)],
         ['collect_holdings.py'],
         ['build_consensus.py'],
-    ]
+    ], timestamp)
+
+
+def run_daily_prices():
+    """매일 미국 장 마감 후 일봉·분할 이력을 증분 수집하고 분기 가격대 요약을 갱신한다."""
+    run_steps([['collect_prices.py']], datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+
+
+def run_steps(steps, timestamp):
+    """[스크립트, *인자] 목록을 순서대로 실행한다. 실패(종료코드 ≠ 0) 시 중단하고 False 반환."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
     for script, *args in steps:
         path = os.path.join(script_dir, script)
         try:
@@ -97,6 +107,8 @@ def main():
 
     # 매일 자정(00:00)에 작업 실행
     scheduler.add_job(check_and_run, 'cron', hour=0, minute=0)
+    # 매일 23:30(VM 시간 UTC, 한국 08:30)에 주가 갱신 — 미국 장 마감(20:00~21:00 UTC) 이후
+    scheduler.add_job(run_daily_prices, 'cron', hour=23, minute=30)
 
     scheduler.start()
 
@@ -107,6 +119,7 @@ def main():
     print("- 5월 20일")
     print("- 8월 20일")
     print("- 11월 20일")
+    print("매일 23:30에 주가(collect_prices.py)를 갱신합니다.")
     print("\n종료하려면 Ctrl+C를 누르세요.")
     print("=" * 60)
 
