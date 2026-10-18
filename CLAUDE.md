@@ -28,6 +28,13 @@ python collect_holdings.py
 # 3. consensus 테이블 갱신 (collect_holdings 완료 후 실행)
 python build_consensus.py
 
+# 4. 주가 갱신 (Polygon 일봉·분할 이력 증분 수집 → price_summary 재계산. 스케줄러가 매일 자동 실행)
+#    최초 실행 시 보고 분기 시작일~오늘을 백필 (무료 요금제 분당 5회 → 약 30분)
+python collect_prices.py
+
+# 저장된 CUSIP의 ticker를 미국 통합 티커로 일괄 정정 (OpenFIGI만 호출, 수 분 — 필요 시만)
+python collect_holdings.py --refresh-tickers
+
 # 기관명 한국어 번역 (institution_names_kr.json 갱신 — 필요 시만 실행)
 python translate_institutions.py
 
@@ -36,6 +43,7 @@ python v2/app.py
 
 # 스케줄러 실행 (매년 2/20, 5/20, 8/20, 11/20 자정에 위 1→2→3단계를 순서대로 자동 실행, 실패 시 중단)
 # 수집 분기: 2/20→작년 Q4, 5/20→Q1, 8/20→Q2, 11/20→Q3 (제출 마감 분기말+45일이 지난 최신 분기)
+# 매일 23:30(UTC, 한국 08:30)에는 collect_prices.py로 주가 갱신
 python scheduler.py
 ```
 
@@ -78,6 +86,9 @@ DB_PASSWORD=
 OPENFIGI_API_KEY=   # 없으면 배치 10개/2.5초 제한, 있으면 100개/0.3초
 
 GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translate_institutions.py)
+
+POLYGON_API_KEY=    # Polygon(Massive) API 키 (주가 일봉·분할 이력 — collect_prices.py)
+POLYGON_CALLS_PER_MIN=5   # 선택. 무료 요금제 5, 유료 전환 시 상향
 ```
 
 ## 파일 역할
@@ -85,8 +96,9 @@ GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translat
 | 파일 | 역할 |
 |---|---|
 | `collect_institutions.py` | SEC EDGAR form.idx에서 해당 분기 전체 13F-HR 기관 목록과 운용금액(tableValueTotal)을 수집 → `all_institutions` 테이블 TRUNCATE+INSERT, 상위 100개를 `top100_institutions` 테이블에 rank 포함 저장 |
-| `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT. OpenFIGI API로 CUSIP→ticker 매핑. 수집 후 기업 액션 정규화(90X/95X 변종 → CUSIP 재발급 통합 → 분할 보정) 자동 실행. |
+| `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT. OpenFIGI API로 CUSIP→ticker 매핑(거래소별 응답 중 미국 통합 `exchCode=US` 티커 우선). 수집 후 기업 액션 정규화(90X/95X 변종 → CUSIP 재발급 통합 → 분할 보정) 자동 실행. |
 | `build_consensus.py` | top100 기관의 공통 매수 종목을 집계·점수화하여 `consensus` 테이블에 저장. 종합·기관수·매수금액·비중변화 4개 지표 산출. |
+| `collect_prices.py` | Polygon(Massive) grouped daily로 미국 전 종목 일봉(분할 미반영)을 `daily_prices`에, 분할 이력을 `stock_splits`에 증분 저장하고, consensus 종목별 보고 분기 가격대(최저가·VWAP·최고가·분기말 종가)와 최신 종가를 분할 환산해 `price_summary`에 저장. "현재가 < 분기 최저가" = 그 분기 장내 매수 기관보다 싸게 살 수 있는 구간 |
 | `translate_institutions.py` | `all_institutions` 기관명을 Gemini API로 한국어 번역 → `institution_names_kr.json` 갱신. 분기 수집 후 필요 시 수동 실행. |
 | `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일) 이후 `collect_institutions` → `collect_holdings` → `build_consensus`를 순서대로 자동 실행. 앞 단계 실패(종료코드≠0) 시 중단. `collect_institutions`는 수집 0건이면 DB를 비우지 않고 실패 종료하며, 번역 실패는 파이프라인을 막지 않음 |
 | `utils.py` | 공통 유틸리티. DB_CONFIG(환경변수 로드), sec_session()(재시도 포함 HTTP 세션), prev_quarter_date(), canonical_cusip()/is_cusip_event()(CUSIP 이벤트 처리), CUSIP_ALIAS/CUSIP_EVENT 테이블, CONSENSUS_EXCLUDE/is_consensus_excluded()(분사·합병·상장 이전 종목 consensus 제외) |
@@ -160,6 +172,17 @@ CREATE TABLE holdings (
     created_at       TIMESTAMP DEFAULT NOW(),
     UNIQUE (cik, cusip, accession_number)
 );
+
+-- 주가 (collect_prices.py가 생성·갱신)
+CREATE TABLE daily_prices (ticker VARCHAR(20), date DATE, open/high/low/close/volume/vwap DOUBLE PRECISION,
+                           PRIMARY KEY (ticker, date));          -- 미국 전 종목 일봉, 분할 미반영(raw)
+CREATE TABLE price_days   (date DATE PRIMARY KEY, n_tickers INT); -- 수집 완료 거래일 (휴장일은 0)
+CREATE TABLE stock_splits (ticker VARCHAR(20), execution_date DATE, split_from, split_to DOUBLE PRECISION,
+                           PRIMARY KEY (ticker, execution_date)); -- 계산 시 분할 전 가격을 현재 기준으로 환산
+CREATE TABLE price_summary (cusip VARCHAR(20) PRIMARY KEY, ticker, report_date,
+    q_low, q_low_date, q_high, q_vwap, q_close,   -- 보고 분기 가격대 (분할 환산)
+    last_close, last_date,                        -- 최신 종가
+    listed_in_qtr BOOLEAN);                       -- 분기 중 신규 상장 (공모가 < 장내 최저가 가능)
 ```
 
 ## 주요 규칙 및 주의사항
