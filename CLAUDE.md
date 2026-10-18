@@ -45,6 +45,7 @@ python scheduler.py
 |---|---|
 | **DB 최신 분기** | 2026 Q2 (report_date = 2026-06-30) — 운영 VM 기준 |
 | **holdings 직전 분기** | 2026 Q1 (report_date = 2026-03-31) |
+| **아이디어·로드맵** | `ideas.md` 참조 (주가 연동·순위 이력·LLM 기업 액션 분류·Discord 알림·뉴스 등 미구현 계획) |
 | **알려진 이슈** | `issues.md` 참조 (T. Rowe Price AUM 과소계상·Vanguard 분사·미래에셋 오신고·CUSIP 변종 등) |
 
 ## 배포 방식
