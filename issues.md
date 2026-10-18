@@ -207,3 +207,28 @@ v2 템플릿(`base.html`·`index.html`·`institution.html`·`consensus.html`·`s
 - (#4) 카드/컬럼 라벨에 미니 설명 추가, (#2) 용어 풀이(툴팁/도움말)
 - (#9) 모바일 대응 (이슈 5와 통합 진행)
 - (#10/#8) 색 범례 명시, 종목 페이지에 외부 시세/증권사 링크 (후순위)
+
+---
+
+## 7. 스케줄러 분기 오계산으로 운영 DB 기관 테이블 소실 (2026-08-20) [조치 완료]
+
+### 현상
+2026-08-20 자정 스케줄러 실행 후 운영 VM의 `all_institutions`·`top100_institutions`가 **0행**이 됨.
+메인 페이지 기관 목록이 비고, holdings·consensus는 2026 Q1에 머무름. 기관명 번역도 실패.
+
+### 원인
+1. `scheduler.get_quarter()`가 분기를 하나 앞서 계산 — 8/20에 Q2(6/30 보고, 8/14 마감)가 아닌
+   **Q3**를 선택. Q3 인덱스(QTR4)는 아직 비어 있어 수집 0건.
+2. `collect_institutions.py`에 0건 가드가 없어 0건 상태로 TRUNCATE+INSERT → 기존 데이터 삭제.
+3. 스케줄러가 `collect_institutions.py`만 실행 — `collect_holdings`·`build_consensus`는 자동 실행되지 않아
+   정상 수집됐더라도 종목·consensus는 갱신되지 않는 구조.
+4. 코드는 신버전 SDK(`from google import genai`)를 쓰는데 `requirements.txt`는 구버전
+   `google-generativeai` → VM에서 번역 ImportError.
+
+### 조치
+- `get_quarter()` 매핑 수정: 2/20→작년 Q4, 5/20→Q1, 8/20→Q2, 11/20→Q3.
+- 스케줄러가 3단계를 순서대로 실행하고, 앞 단계 실패(종료코드≠0) 시 중단.
+- `collect_institutions.py`: 수집 0건이면 DB 갱신 없이 `exit(1)`. 번역 실패는 경고만 하고 진행.
+- `requirements.txt`: `google-genai==2.31.0`으로 교체.
+- `redeploy.sh`: `institution_names_kr.json`을 tar에서 제외 (VM 수집이 갱신한 번역을 재배포가 덮어쓰지 않도록).
+- 2026-10-18 VM에서 2026 Q2 파이프라인 수동 실행으로 데이터 복구.

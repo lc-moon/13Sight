@@ -32,7 +32,8 @@ python translate_institutions.py
 # 웹 서버 실행 (v2 전용, http://localhost:5001)
 python v2/app.py
 
-# 스케줄러 실행 (매년 2/20, 5/20, 8/20, 11/20 자정에 collect_institutions.py 자동 실행)
+# 스케줄러 실행 (매년 2/20, 5/20, 8/20, 11/20 자정에 위 1→2→3단계를 순서대로 자동 실행, 실패 시 중단)
+# 수집 분기: 2/20→작년 Q4, 5/20→Q1, 8/20→Q2, 11/20→Q3 (제출 마감 분기말+45일이 지난 최신 분기)
 python scheduler.py
 ```
 
@@ -84,9 +85,9 @@ GEMINI_API_KEY=     # Gemini API 키 (기관명 한국어 번역용 — translat
 | `collect_holdings.py` | `top100_institutions` 테이블 CIK를 rank 순으로 조회, 각 기관의 최근 2개 분기 13F 보유 종목을 수집 → `holdings` 테이블 UPSERT. OpenFIGI API로 CUSIP→ticker 매핑. |
 | `build_consensus.py` | top100 기관의 공통 매수 종목을 집계·점수화하여 `consensus` 테이블에 저장. 종합·기관수·매수금액·비중변화 4개 지표 산출. |
 | `translate_institutions.py` | `all_institutions` 기관명을 Gemini API로 한국어 번역 → `institution_names_kr.json` 갱신. 분기 수집 후 필요 시 수동 실행. |
-| `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일)에 `collect_institutions.py` 자동 실행 |
+| `scheduler.py` | APScheduler로 분기별 제출 마감일(분기말+45일) 이후 `collect_institutions` → `collect_holdings` → `build_consensus`를 순서대로 자동 실행. 앞 단계 실패(종료코드≠0) 시 중단. `collect_institutions`는 수집 0건이면 DB를 비우지 않고 실패 종료하며, 번역 실패는 파이프라인을 막지 않음 |
 | `utils.py` | 공통 유틸리티. DB_CONFIG(환경변수 로드), sec_session()(재시도 포함 HTTP 세션), prev_quarter_date(), canonical_cusip()/is_cusip_event()(CUSIP 이벤트 처리), CUSIP_ALIAS/CUSIP_EVENT 테이블 |
-| `institution_names_kr.json` | 기관명 한국어 번역 캐시. `translate_institutions.py`가 생성, `v2/app.py`가 기관 목록 표시 시 로드. git 추적됨(VM과 동기화 불필요). |
+| `institution_names_kr.json` | 기관명 한국어 번역 캐시. `translate_institutions.py`가 생성, `v2/app.py`가 기관 목록 표시 시 로드. git 추적됨. **VM 파일이 기준** — VM 분기 수집이 갱신하므로 `redeploy.sh`는 이 파일을 덮어쓰지 않음(로컬 최신화가 필요하면 VM에서 scp로 받아옴). |
 | `v2/app.py` | **(활성)** Flask 웹 서버. `/`(검색+기관 목록), `/institution/<cik>`(기관 분석), `/stock/<cusip>`(종목 분석), `/consensus`(통합분석), `/api/search`(기관·종목 자동완성 JSON). 포트 5001 |
 | `app.py` · `templates/` | **(동결, v1)** 구버전 웹 레이어. 사용·수정하지 않음 |
 | `test/backtest_2025q1.py` | 백테스트 스크립트. 현재 top100 기관의 25Q1(2025-03-31) vs 24Q4(2024-12-31) 13F를 SEC에서 직접 수집해 consensus 계산 후 수익률 검증. DB 읽기 전용, 결과는 `test/top10_consensus.json`에 저장. `holdings_cache.json`(30MB) 캐시를 생성하므로 재실행 시 빠름. |
