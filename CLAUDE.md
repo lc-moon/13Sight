@@ -2,6 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **🌐 외부 접속 URL: http://161.33.143.61:5001** (운영 VM · 브라우저에서 바로 접속)
+
 ## 프로젝트 개요
 
 SEC EDGAR에서 기관투자자의 13F 보고서를 수집·분석하는 도구. 전체 기관 운용금액을 수집하고 상위 100개 기관의 보유 종목을 웹으로 시각화한다.

@@ -1,5 +1,7 @@
 # 13Sight 배포 가이드 (Oracle Cloud Always Free · IP:포트)
 
+> **🌐 외부 접속 URL: http://161.33.143.61:5001** · VM 접속: `ssh -i ~/Downloads/ssh-key-2026-06-15.key ubuntu@161.33.143.61`
+
 단일 VM 한 대에서 **Flask 웹(gunicorn) + APScheduler + PostgreSQL**을 함께 띄운다.
 접속은 우선 `http://<VM공인IP>:5001` 형태(도메인/HTTPS는 추후).
 
