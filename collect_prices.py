@@ -209,6 +209,17 @@ def adjust_bar(splits, d, lo, hi, cl, vw, vol) -> tuple:
     return (d, *(p / k if p else p for p in (lo, hi, cl, vw)), vol)
 
 
+def trim_relisting(bars: list) -> list:
+    """티커 재사용(예: 'SPCX'가 ETF → 상장폐지 → SpaceX IPO로 재배정)으로 서로 다른 종목의 가격이
+    이어 붙은 경우, 마지막 재상장 지점 이후 일봉만 남긴다. 거래 공백(7일 초과)과 가격 급변(2배 이상/절반 이하)이
+    함께 있어야 재상장으로 본다 — 단순 거래정지(공백만)나 인수 발표 급등(급변만)은 건드리지 않음."""
+    for i in range(len(bars) - 1, 0, -1):
+        prev, cur = bars[i - 1], bars[i]
+        if (cur[0] - prev[0]).days > 7 and prev[3] and cur[3] and not (0.5 < cur[3] / prev[3] < 2):
+            return bars[i:]
+    return bars
+
+
 def load_adjusted_bars(conn, ticker: str, start: date) -> list:
     """ticker의 start 이후 일봉을 분할 환산해 [(date, low, high, close, vwap, volume), ...]로 반환한다."""
     tk = polygon_ticker(ticker)
@@ -219,7 +230,7 @@ def load_adjusted_bars(conn, ticker: str, start: date) -> list:
             "WHERE ticker = %s AND date >= %s ORDER BY date",
             (tk, start),
         )
-        return [adjust_bar(splits, *r) for r in cur.fetchall()]
+        return trim_relisting([adjust_bar(splits, *r) for r in cur.fetchall()])
 
 
 def summarize(bars: list, q_start: date, q_end: date) -> dict:
@@ -263,7 +274,7 @@ def build_summary(conn) -> int:
 
     rows = []
     for cusip, ticker in targets:
-        s = summarize(bars_by.get(polygon_ticker(ticker), []), q_start, q_end)
+        s = summarize(trim_relisting(bars_by.get(polygon_ticker(ticker), [])), q_start, q_end)
         if s:
             rows.append((cusip, polygon_ticker(ticker), report_date, s["q_low"], s["q_low_date"], s["q_high"],
                          s["q_vwap"], s["q_close"], s["last_close"], s["last_date"], s["listed_in_qtr"]))
