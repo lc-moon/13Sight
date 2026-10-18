@@ -5,7 +5,10 @@ import requests
 import psycopg2
 from psycopg2.extras import execute_values
 from xml.etree import ElementTree as ET
-from utils import DB_CONFIG, sec_session, prev_quarter_date
+from utils import DB_CONFIG, sec_session, prev_quarter_date, CUSIP_ALIAS
+
+# 주식 분할·병합 판별에 쓰는 후보 비율 (정분할 F:1 과 역분할 1:F)
+_SPLIT_FACTORS = [f for n in (2, 3, 4, 5, 6, 8, 10, 15, 20, 25, 30, 40, 50) for f in (n, 1 / n)]
 
 OPENFIGI_URL        = "https://api.openfigi.com/v3/mapping"
 OPENFIGI_BATCH_FREE = 10   # API 키 없을 때 최대 10개
@@ -284,47 +287,147 @@ def normalize_variant_cusips(conn) -> int:
             }
             if not mapping:
                 return 0
+            return _merge_cusips(cur, mapping)
 
-            variants = list(mapping.keys())
+
+def _merge_cusips(cur, mapping: dict) -> int:
+    """mapping(구 CUSIP → 정본 CUSIP)의 구 CUSIP 행을 정본으로 재지정하고 value·shares를 합산한다.
+    반환값: 재지정된 구 CUSIP 행 수."""
+    olds = list(mapping.keys())
+    cur.execute(
+        """
+        SELECT cik, accession_number, cusip, company_name, value, shares, report_date
+        FROM holdings WHERE cusip = ANY(%s)
+        """,
+        (olds,),
+    )
+    old_rows = cur.fetchall()
+
+    # (cik, 정본 cusip, accession) 기준으로 value·shares 합산
+    merged: dict = {}
+    for cik, acc, cusip, name, value, shares, rdate in old_rows:
+        key = (cik, mapping[cusip], acc)
+        if key not in merged:
+            merged[key] = [name, 0, 0, rdate]
+        merged[key][1] += value  or 0
+        merged[key][2] += shares or 0
+
+    cur.execute("DELETE FROM holdings WHERE cusip = ANY(%s)", (olds,))
+
+    # 정본 행이 있으면 누적, 없으면 신규 삽입. ticker는 정본 것 유지(건드리지 않음)
+    records = [
+        (cik, acc, name, canon, value, shares, rdate)
+        for (cik, canon, acc), (name, value, shares, rdate) in merged.items()
+    ]
+    if records:
+        execute_values(
+            cur,
+            """
+            INSERT INTO holdings
+                (cik, accession_number, company_name, cusip, value, shares, report_date)
+            VALUES %s
+            ON CONFLICT (cik, cusip, accession_number)
+            DO UPDATE SET
+                value  = holdings.value  + EXCLUDED.value,
+                shares = holdings.shares + EXCLUDED.shares
+            """,
+            records,
+        )
+    return len(old_rows)
+
+
+def normalize_cusip_changes(conn, curr_date, prev_date) -> dict:
+    """분기 사이 기업 액션으로 CUSIP이 재발급된 종목을 새 CUSIP으로 통합한다.
+
+    같은 발행사(앞 6자리) 안에서 구 CUSIP 보유 기관이 거의 사라지고(직전 대비 20% 이하)
+    새 CUSIP이 직전 분기엔 거의 없다가 이번 분기 다수 보유된 경우를 1:1로 짝지어 자동 매핑한다
+    (예: Honeywell 438516106 → 438516205). 발행사 코드까지 바뀐 경우는 자동 판별하지 않고
+    utils.CUSIP_ALIAS 수동 매핑을 함께 적용한다. 주식 수 환산비가 1:1이 아니면
+    이어서 실행되는 normalize_splits()가 보정한다.
+    반환값: 적용된 {구 CUSIP: 새 CUSIP}.
+    """
+    with conn:
+        with conn.cursor() as cur:
             cur.execute(
                 """
-                SELECT cik, accession_number, cusip, company_name, value, shares, report_date
-                FROM holdings WHERE cusip = ANY(%s)
-                """,
-                (variants,),
-            )
-            variant_rows = cur.fetchall()
-
-            # (cik, 정본 cusip, accession) 기준으로 value·shares 합산
-            merged: dict = {}
-            for cik, acc, cusip, name, value, shares, rdate in variant_rows:
-                key = (cik, mapping[cusip], acc)
-                if key not in merged:
-                    merged[key] = [name, 0, 0, rdate]
-                merged[key][1] += value  or 0
-                merged[key][2] += shares or 0
-
-            cur.execute("DELETE FROM holdings WHERE cusip = ANY(%s)", (variants,))
-
-            # 정본 행이 있으면 누적, 없으면 신규 삽입. ticker는 정본 것 유지(건드리지 않음)
-            records = [
-                (cik, acc, name, canon, value, shares, rdate)
-                for (cik, canon, acc), (name, value, shares, rdate) in merged.items()
-            ]
-            execute_values(
-                cur,
+                SELECT cusip, report_date, COUNT(*) FROM holdings
+                WHERE value > 0 AND cusip IS NOT NULL GROUP BY cusip, report_date
                 """
-                INSERT INTO holdings
-                    (cik, accession_number, company_name, cusip, value, shares, report_date)
-                VALUES %s
-                ON CONFLICT (cik, cusip, accession_number)
-                DO UPDATE SET
-                    value  = holdings.value  + EXCLUDED.value,
-                    shares = holdings.shares + EXCLUDED.shares
-                """,
-                records,
             )
-    return len(variant_rows)
+            counts: dict = {}  # cusip → [직전 분기 보유 기관 수, 현재 분기 보유 기관 수]
+            for cusip, rdate, n in cur.fetchall():
+                if rdate in (prev_date, curr_date):
+                    counts.setdefault(cusip, [0, 0])[rdate == curr_date] = n
+
+            by_issuer: dict = {}
+            for cusip in counts:
+                if len(cusip) == 9:
+                    by_issuer.setdefault(cusip[:6], []).append(cusip)
+
+            mapping = {}
+            for cusips in by_issuer.values():
+                gone = [c for c in cusips if counts[c][0] >= 10 and counts[c][1] <= counts[c][0] * 0.2]
+                new  = [c for c in cusips if counts[c][1] >= 10 and counts[c][0] <= counts[c][1] * 0.2]
+                if len(gone) == 1 and len(new) == 1 and counts[new[0]][1] >= counts[gone[0]][0] * 0.5:
+                    mapping[gone[0]] = new[0]
+            mapping.update({old: new for old, new in CUSIP_ALIAS.items() if old in counts})
+
+            if mapping:
+                _merge_cusips(cur, mapping)
+    return mapping
+
+
+def normalize_splits(conn, curr_date, prev_date) -> dict:
+    """주식 분할·병합 종목의 직전 분기 주식 수를 분할 비율로 환산해 분기 비교를 가능하게 한다.
+
+    분할 종목은 기관 대부분의 주식 수가 같은 배수로 바뀌어, 수량이 그대로(±10%)인 기관이
+    거의 없다. 실제 매수로 수량이 늘어난 종목은 그대로인 기관이 다수 남으므로 구분된다.
+    양 분기 모두 보유한 기관이 20곳 이상이고, 한 후보 비율(±10%)에 모인 기관 비중이
+    - 그대로인 기관 3% 이하일 때 25% 이상, 또는
+    - 그대로인 기관 10% 이하일 때 40% 이상 (합병 주식교환처럼 비율이 흩어진 경우 배제)
+    인 종목만 그 비율로 판정해 직전 분기 shares에 곱한다.
+    보정 후에는 비율이 ~1이 되어 재실행해도 다시 판정되지 않는다.
+    반환값: 적용된 {cusip: 분할 비율}.
+    """
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT cik, cusip, shares, report_date FROM holdings
+                WHERE shares > 0 AND value > 0 AND report_date IN (%s, %s)
+                """,
+                (prev_date, curr_date),
+            )
+            prev, curr = {}, {}
+            for cik, cusip, shares, rdate in cur.fetchall():
+                (curr if rdate == curr_date else prev)[(cik, cusip)] = shares
+
+            ratios: dict = {}  # cusip → [기관별 현재/직전 주식 수 비율]
+            for key, p_shares in prev.items():
+                c_shares = curr.get(key)
+                if c_shares:
+                    ratios.setdefault(key[1], []).append(c_shares / p_shares)
+
+            def near(rs, f):
+                return sum(f * 0.9 <= r <= f * 1.1 for r in rs)
+
+            factors = {}
+            for cusip, rs in ratios.items():
+                if len(rs) < 20:
+                    continue
+                unchanged = near(rs, 1) / len(rs)
+                if unchanged > 0.10:
+                    continue
+                best = max(_SPLIT_FACTORS, key=lambda f: near(rs, f))
+                if near(rs, best) / len(rs) >= (0.25 if unchanged <= 0.03 else 0.40):
+                    factors[cusip] = best
+
+            for cusip, f in factors.items():
+                cur.execute(
+                    "UPDATE holdings SET shares = ROUND(shares * %s::numeric) WHERE cusip = %s AND report_date = %s",
+                    (f, cusip, prev_date),
+                )
+    return factors
 
 
 def main() -> None:
@@ -382,6 +485,15 @@ def main() -> None:
     merged = normalize_variant_cusips(conn)
     if merged:
         print(f"90X/95X 변종 CUSIP {merged}행을 정본으로 통합 완료")
+
+    changes = normalize_cusip_changes(conn, curr_date, prev_date)
+    if changes:
+        print(f"CUSIP 재발급 {len(changes)}건 통합 완료: {changes}")
+
+    splits = normalize_splits(conn, curr_date, prev_date)
+    if splits:
+        print(f"주식 분할·병합 {len(splits)}건 직전 분기 수량 보정 완료: "
+              + ", ".join(f"{c}×{f:g}" for c, f in splits.items()))
 
     conn.close()
     print("\n완료.")
