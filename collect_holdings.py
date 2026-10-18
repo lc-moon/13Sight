@@ -81,8 +81,10 @@ def fetch_tickers_by_cusip(session: requests.Session, cusips: list, cache: dict)
             for cusip, item in zip(batch, resp.json()):
                 data = item.get("data")
                 if data:
-                    sec_type2 = data[0].get("securityType2", "")
-                    ticker    = data[0].get("ticker") or ""
+                    # 응답은 거래소별 목록(첫 항목이 독일 등 해외 거래소일 수 있음) → 미국 통합(US) 티커 우선
+                    entry     = next((d for d in data if d.get("exchCode") == "US"), data[0])
+                    sec_type2 = entry.get("securityType2", "")
+                    ticker    = entry.get("ticker") or ""
                     if any(t in sec_type2 for t in _BOND_TYPES) or " " in ticker:
                         cache[cusip] = _BOND_CUSIP
                     else:
@@ -430,6 +432,28 @@ def normalize_splits(conn, curr_date, prev_date) -> dict:
     return factors
 
 
+def refresh_tickers(conn, session: requests.Session) -> int:
+    """holdings·consensus에 저장된 전 CUSIP의 ticker를 OpenFIGI 미국 통합 티커로 다시 매핑한다.
+    (해외 거래소 티커로 잘못 저장된 기존 데이터 일괄 정정용. 채권 판정 CUSIP은 건드리지 않음)
+    반환값: ticker가 바뀐 CUSIP 수."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT cusip, MAX(ticker) FROM holdings WHERE cusip IS NOT NULL GROUP BY cusip")
+        current = dict(cur.fetchall())
+    mapped = fetch_tickers_by_cusip(session, list(current), {})
+    changes = [(tk, c) for c, tk in mapped.items()
+               if tk and tk != _BOND_CUSIP and tk != current.get(c)]
+    with conn:
+        with conn.cursor() as cur:
+            for table in ("holdings", "consensus"):
+                execute_values(
+                    cur,
+                    f"UPDATE {table} t SET ticker = v.ticker FROM (VALUES %s) AS v(ticker, cusip) "
+                    "WHERE t.cusip = v.cusip",
+                    changes,
+                )
+    return len(changes)
+
+
 def main() -> None:
     """상위 100개 기관의 현재·직전 분기 13F 보유 종목을 수집해 DB에 저장한다."""
     session = sec_session()
@@ -500,4 +524,11 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    import sys
+    if "--refresh-tickers" in sys.argv:
+        # 수집 없이 저장된 CUSIP의 ticker만 미국 통합 티커로 재매핑 (OpenFIGI만 호출, 수 분)
+        _conn = psycopg2.connect(**DB_CONFIG)
+        print(f"ticker 정정 완료: {refresh_tickers(_conn, sec_session())}개 CUSIP")
+        _conn.close()
+    else:
+        main()
