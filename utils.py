@@ -41,6 +41,10 @@ _SEC_HEADERS = {
 # (구 CUSIP은 다음 분기엔 데이터에서 사라지므로 항목을 영구히 둬도 무해 = no-op)
 CUSIP_ALIAS = {
     "046353108": "G0593M107",  # AstraZeneca: ADR 종료 → 보통주 전환 (2026-01)
+    "143658300": "G2004J103",  # Carnival Corp: 발행사 코드 변경 (2026 Q2) — 앞 6자리가 달라 자동 판별 불가
+    "04351P101": "K08588103",  # Ascendis Pharma: ADS → 보통주 직상장 1:1 (2026-04)
+    "09173B107": "486917107",  # Bitfarms → Keel Infrastructure: 미국 이전·사명 변경 (2026-04)
+    "811916105": "811927102",  # Seabridge Gold: Valor Gold 분사 후 신주 1:1 교환 (2026-06)
 }
 
 # 정본 CUSIP → (사용자 표시 라벨, 전환 반영 분기말). 이 종목들은 ADR↔보통주처럼
@@ -50,6 +54,28 @@ CUSIP_ALIAS = {
 CUSIP_EVENT = {
     "G0593M107": ("ADR→보통주 전환", date(2026, 3, 31)),
 }
+
+
+# 분사·합병·상장 이전으로 '받은 주식'이 매수로 잡히는 종목 → (사유, 이벤트 반영 분기말).
+# 13F만으로는 받은 주식과 실제 매수를 구분할 수 없어, 비교 구간이 이벤트 분기를 가로지를 때
+# 해당 종목 전체를 consensus 집계에서 제외한다. 다음 분기부터는 자동으로 일반 비교로 복귀(항목 영구 보존 무해).
+# 신규 상장(IPO)은 실제 매수이므로 등록하지 않는다.
+CONSENSUS_EXCLUDE = {
+    "43849R105": ("분사: Honeywell Aerospace ← Honeywell", date(2026, 6, 30)),
+    "314352105": ("분사: FedEx Freight ← FedEx", date(2026, 6, 30)),
+    "G9600F104": ("분사: Versigent ← Aptiv", date(2026, 6, 30)),
+    "25179M103": ("합병: Devon ← Coterra 주식교환", date(2026, 6, 30)),
+    "G2004J103": ("합병: Carnival plc → Carnival Corp 통합", date(2026, 6, 30)),
+    # 해외 상장사의 미국 거래소 이전: 기존 보유분이 새로 13F 대상이 된 것이라 매수가 아님
+    "G9723Y105": ("상장 이전: Wise 런던 → 나스닥 주상장", date(2026, 6, 30)),
+    "675222400": ("상장 이전: OceanaGold 장외 → NYSE", date(2026, 6, 30)),
+}
+
+
+def is_consensus_excluded(cusip, prev_date, curr_date):
+    """prev_date→curr_date 비교 구간이 이 종목의 분사·합병 분기를 가로지르는지."""
+    ev = CONSENSUS_EXCLUDE.get(cusip)
+    return bool(ev) and prev_date is not None and prev_date < ev[1] <= curr_date
 
 
 def canonical_cusip(cusip):
