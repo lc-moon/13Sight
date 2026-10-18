@@ -318,6 +318,12 @@ def main(year_arg: str, quarter_str: str, top100_only: bool = False) -> None:
 
             time.sleep(0.1)  # SEC 정책: 초당 10 요청 이내
 
+        # 아직 제출 기간 전인 분기 등으로 수집 결과가 0건이면 TRUNCATE로 기존 데이터를
+        # 지우지 않도록 DB 갱신 없이 실패 종료한다 (스케줄러가 후속 단계를 중단함).
+        if not records:
+            print(f"\n[중단] {year}년 {quarter}분기 수집 결과 0건 — DB를 갱신하지 않고 종료합니다.")
+            sys.exit(1)
+
         print(f"\nDB 저장 중... ({len(records)}개 기관)")
         dup_count = save_institutions_to_db(records)
         print(
@@ -329,8 +335,12 @@ def main(year_arg: str, quarter_str: str, top100_only: bool = False) -> None:
 
     build_top100_institutions(session, report_date, p_date)
 
-    from translate_institutions import translate_top100
-    translate_top100()
+    # 기관명 번역은 표시용 부가 기능이므로 실패해도 파이프라인(holdings·consensus)을 막지 않는다.
+    try:
+        from translate_institutions import translate_top100
+        translate_top100()
+    except Exception as e:
+        print(f"\n[번역 실패] {e} — 수집 결과는 정상 저장됨. 필요 시 translate_institutions.py를 수동 실행하세요.")
 
 
 if __name__ == "__main__":

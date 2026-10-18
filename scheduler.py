@@ -1,4 +1,4 @@
-"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 collect_institutions.py를 자동 실행하는 APScheduler 스케줄러."""
+"""분기별 제출 마감일(2/20, 5/20, 8/20, 11/20)에 수집 파이프라인(기관 → 보유 종목 → consensus)을 자동 실행하는 APScheduler 스케줄러."""
 import os
 import sys
 import time
@@ -13,42 +13,69 @@ TARGET_DATES = [(2, 20), (5, 20), (8, 20), (11, 20)]
 
 def get_quarter(date_obj):
     """
-    기준일에 따른 분기 판별 로직:
-    - 1분기: 02/20 ~ 05/19
-    - 2분기: 05/20 ~ 08/19
-    - 3분기: 08/20 ~ 11/19
-    - 4분기: 11/20 ~ 익년 02/19
+    기준일 시점에 13F 제출 마감(분기말+45일)이 지난 가장 최근 보고 분기를 반환:
+    - 02/20 ~ 05/19: 작년 4분기 (12/31 보고 → 2/14 마감)
+    - 05/20 ~ 08/19: 1분기 (3/31 보고 → 5/15 마감)
+    - 08/20 ~ 11/19: 2분기 (6/30 보고 → 8/14 마감)
+    - 11/20 ~ 익년 02/19: 3분기 (9/30 보고 → 11/14 마감)
     """
     curr_year = date_obj.year
-    
-    # 각 분기의 시작 날짜 설정
+
+    # 각 구간의 시작 날짜 설정
     q1_start = datetime(curr_year, 2, 20)
     q2_start = datetime(curr_year, 5, 20)
     q3_start = datetime(curr_year, 8, 20)
     q4_start = datetime(curr_year, 11, 20)
 
     if date_obj < q1_start:
-        # 1월 1일 ~ 2월 19일 사이라면 작년 4분기
+        # 1월 1일 ~ 2월 19일 사이라면 작년 3분기
+        year = curr_year - 1
+        quarter = 3
+    elif q1_start <= date_obj < q2_start:
         year = curr_year - 1
         quarter = 4
-    elif q1_start <= date_obj < q2_start:
-        year = curr_year
-        quarter = 1
     elif q2_start <= date_obj < q3_start:
         year = curr_year
-        quarter = 2
+        quarter = 1
     elif q3_start <= date_obj < q4_start:
         year = curr_year
-        quarter = 3
+        quarter = 2
     else:
-        # 11월 20일 ~ 12월 31일 사이라면 올해 4분기
+        # 11월 20일 ~ 12월 31일 사이라면 올해 3분기
         year = curr_year
-        quarter = 4
-        
+        quarter = 3
+
     return year, quarter
 
+def run_pipeline(year, quarter, timestamp):
+    """collect_institutions → collect_holdings → build_consensus를 순서대로 실행한다.
+    앞 단계가 실패(종료코드 ≠ 0)하면 뒤 단계는 실행하지 않는다."""
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    steps = [
+        ['collect_institutions.py', str(year), str(quarter)],
+        ['collect_holdings.py'],
+        ['build_consensus.py'],
+    ]
+    for script, *args in steps:
+        path = os.path.join(script_dir, script)
+        try:
+            result = subprocess.run([sys.executable, path, *args], capture_output=True, text=True)
+        except Exception as e:
+            print(f"[{timestamp}] {script} 실행 중 오류 발생: {e} → 파이프라인 중단")
+            return False
+        if result.stdout:
+            print(f"[{timestamp}] {script} 출력: {result.stdout.strip()}")
+        if result.stderr:
+            print(f"[{timestamp}] {script} 오류: {result.stderr.strip()}")
+        if result.returncode != 0:
+            print(f"[{timestamp}] {script} 실패 (종료코드 {result.returncode}) → 파이프라인 중단")
+            return False
+        print(f"[{timestamp}] {script} 실행 완료")
+    return True
+
+
 def check_and_run():
-    """날짜를 확인하고 조건에 맞으면 collect_institutions.py를 실행합니다."""
+    """날짜를 확인하고 조건에 맞으면 수집 파이프라인을 실행합니다."""
     now = datetime.now()
     current_month = now.month
     current_day = now.day
@@ -57,23 +84,10 @@ def check_and_run():
 
     # 오늘이 지정된 날짜 중 하나인지 확인
     if (current_month, current_day) in TARGET_DATES:
-        print(f"[{timestamp}] ✓ 지정된 날짜입니다. collect_institutions.py를 실행합니다.")
-
         # 연도와 분기 정보 가져오기
         year, quarter = get_quarter(now)
-
-        script_dir = os.path.dirname(os.path.abspath(__file__))
-        aa_py_path = os.path.join(script_dir, 'collect_institutions.py')
-
-        try:
-            result = subprocess.run([sys.executable, aa_py_path, str(year), str(quarter)], capture_output=True, text=True)
-            print(f"[{timestamp}] collect_institutions.py 실행 완료")
-            if result.stdout:
-                print(f"[{timestamp}] 출력: {result.stdout.strip()}")
-            if result.stderr:
-                print(f"[{timestamp}] 오류: {result.stderr.strip()}")
-        except Exception as e:
-            print(f"[{timestamp}] collect_institutions.py 실행 중 오류 발생: {e}")
+        print(f"[{timestamp}] ✓ 지정된 날짜입니다. {year}년 {quarter}분기 수집 파이프라인을 실행합니다.")
+        run_pipeline(year, quarter, timestamp)
     else:
         print(f"[{timestamp}] ✗ 지정된 날짜가 아닙니다. (현재: {current_month}월 {current_day}일)")
 
