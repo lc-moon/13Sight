@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # 로컬 코드 변경분을 프로덕션 VM에 배포하고 웹 서비스를 재시작한다.
 # .env·venv·DB·데이터는 건드리지 않고 코드만 갱신한다.
+# institution_names_kr.json은 VM의 분기 수집이 갱신하므로 덮어쓰지 않는다(VM 파일이 기준).
 #
 # 사용법: 프로젝트 루트에서  bash deploy/redeploy.sh
 #         (스케줄러 코드도 바꿨으면)  bash deploy/redeploy.sh --scheduler
@@ -19,7 +20,8 @@ fi
 echo "[1/4] 코드 압축..."
 tar czf /tmp/13sight_code.tar.gz \
   --exclude='.git' --exclude='venv' --exclude='__pycache__' \
-  --exclude='.env' --exclude='13sight.sql' --exclude='.claude' .
+  --exclude='.env' --exclude='13sight.sql' --exclude='.claude' \
+  --exclude='institution_names_kr.json' .
 
 echo "[2/4] 서버로 전송..."
 scp -i "$KEY" /tmp/13sight_code.tar.gz "$HOST:/tmp/"
