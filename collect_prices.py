@@ -153,15 +153,16 @@ def fetch_daily(session, conn, start: date, end: date) -> int:
 
 def fetch_splits(session, conn, since: date) -> int:
     """since 이후 실행된 주식 분할 이력을 받아 저장한다 (가격 환산용)."""
-    url, params, rows = f"{POLYGON_URL}/v3/reference/splits", {"execution_date.gte": str(since), "limit": 1000}, []
+    url, params = f"{POLYGON_URL}/v3/reference/splits", {"execution_date.gte": str(since), "limit": 1000}
+    found: dict = {}  # (ticker, execution_date) → 행. 응답에 같은 분할이 중복으로 올 수 있어 키 기준으로 합침
     while url:
         data = polygon_get(session, url, params) or {}
-        rows += [
-            (s["ticker"], s["execution_date"], s["split_from"], s["split_to"])
-            for s in data.get("results", [])
-            if s.get("ticker") and s.get("split_from") and s.get("split_to")
-        ]
+        for s in data.get("results", []):
+            if s.get("ticker") and s.get("split_from") and s.get("split_to"):
+                found[(s["ticker"], s["execution_date"])] = (
+                    s["ticker"], s["execution_date"], s["split_from"], s["split_to"])
         url, params = data.get("next_url"), None  # next_url에 커서 포함, apiKey는 polygon_get이 붙임
+    rows = list(found.values())
     if rows:
         with conn:
             with conn.cursor() as cur:
