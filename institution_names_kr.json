@@ -1,5 +1,5 @@
 {
-  "updated_at": "2026-06-03T02:18:09",
+  "updated_at": "2026-10-18T15:08:10",
   "institutions": {
     "0002012383": {
       "name_en": "BlackRock, Inc.",
@@ -400,6 +400,22 @@
     "0001692234": {
       "name_en": "Russell Investments Group, Ltd.",
       "name_kr": "러셀 인베스트먼트 그룹"
+    },
+    "0002146052": {
+      "name_en": "Jupiter Topco LLC",
+      "name_kr": "주피터"
+    },
+    "0001777271": {
+      "name_en": "Sanctuary Advisors, LLC",
+      "name_kr": "생추어리 어드바이저스"
+    },
+    "0000869178": {
+      "name_en": "VAN ECK ASSOCIATES CORP",
+      "name_kr": "반에크"
+    },
+    "0002113507": {
+      "name_en": "PeakShares LLC",
+      "name_kr": "피크셰어즈"
     }
   }
 }
