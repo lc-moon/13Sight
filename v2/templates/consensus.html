@@ -139,6 +139,10 @@
   .price-toggle:hover { border-color: #0F6E56; color: #0F6E56; }
   .price-toggle.on { background: #0F6E56; border-color: #0F6E56; color: #fff; }
   .price-note { font-family: var(--font-sans); font-size: var(--fs-caption); color: var(--color-mute); }
+  .th-sort a { color: inherit; white-space: nowrap; }
+  .th-sort a:hover { color: #0F6E56; }
+  .sort-ind { font-family: var(--font-mono); margin-left: 4px; color: var(--color-mute); }
+  .th-sort a:hover .sort-ind { color: #0F6E56; }
   .px { font-family: var(--font-mono); }
   .px-pct { font-family: var(--font-mono); font-size: 12px; color: var(--color-mute); margin-left: 6px; }
   .px-pct.below {
@@ -154,6 +158,13 @@
 {% endblock %}
 
 {% block content %}
+{% macro url(t=tab, b=below, so=sort) -%}
+/consensus?tab={{ t }}{% if b %}&below=1{% endif %}{% if so %}&sort={{ so }}{% endif %}
+{%- endmacro %}
+{% macro price_th() -%}
+{% set nxt = 'price' if not sort else ('price_desc' if sort == 'price' else '') %}
+<th class="num th-sort" style="width:170px"><a href="{{ url(so=nxt) }}" title="클릭: 저렴한 순 → 비싼 순 → 기본 순위">현재가 · 분기저가 대비<span class="sort-ind">{% if sort == 'price' %}▲{% elif sort == 'price_desc' %}▼{% else %}⇅{% endif %}</span></a></th>
+{%- endmacro %}
 {% macro price_cell(p) -%}
 {% if p %}<span class="px">{{ p.last }}</span><span class="px-pct{% if p.below %} below{% endif %}">{{ p.pct }}</span>{% if p.ipo %}<span class="px-ipo" title="분기 중 신규 상장 — 공모가로 배정받은 기관은 장내 최저가보다 싸게 샀을 수 있음">상장</span>{% endif %}{% else %}<span class="px-pct">—</span>{% endif %}
 {%- endmacro %}
@@ -170,7 +181,7 @@
       {% if t.active %}
       <span class="tab active">{{ t.label }}</span>
       {% else %}
-      <a class="tab" href="/consensus?tab={{ t.key }}{% if below %}&below=1{% endif %}">{{ t.label }}</a>
+      <a class="tab" href="{{ url(t=t.key) }}">{{ t.label }}</a>
       {% endif %}
     {% endfor %}
   </nav>
@@ -182,7 +193,7 @@
     <input type="text" id="consensusFilter" class="consensus-filter"
            placeholder="티커·종목명 검색" autocomplete="off">
     <a class="price-toggle{% if below %} on{% endif %}"
-       href="/consensus?tab={{ tab }}{% if not below %}&below=1{% endif %}">분기 최저가 아래만</a>
+       href="{{ url(b=not below) }}">분기 최저가 아래만</a>
     <span class="price-note">{{ report_label }} 분기 중 최저가보다 현재가가 낮은 종목 — 그 분기에 장내 매수한 기관보다 싸게 살 수 있는 구간</span>
   </div>
   {% if not rows %}
@@ -201,7 +212,7 @@
             <th class="num" style="width:110px">기관수 순위</th>
             <th class="num" style="width:110px">매수금액 순위</th>
             <th class="num" style="width:110px">비중변화 순위</th>
-            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
+            {{ price_th() }}
           </tr>
           {% elif tab == "inst" %}
           <tr>
@@ -209,7 +220,7 @@
             <th style="width:100px">티커</th>
             <th>종목명</th>
             <th class="num">매수 기관 수</th>
-            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
+            {{ price_th() }}
           </tr>
           {% elif tab == "buy" %}
           <tr>
@@ -217,7 +228,7 @@
             <th style="width:100px">티커</th>
             <th>종목명</th>
             <th class="num">총 매수 금액</th>
-            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
+            {{ price_th() }}
           </tr>
           {% else %}
           <tr>
@@ -225,7 +236,7 @@
             <th style="width:100px">티커</th>
             <th>종목명</th>
             <th class="num">비중 변화 합산</th>
-            <th class="num" style="width:170px">현재가 · 분기저가 대비</th>
+            {{ price_th() }}
           </tr>
           {% endif %}
         </thead>

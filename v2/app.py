@@ -127,8 +127,10 @@ def _has_prices(cur) -> bool:
     return cur.fetchone()[0]
 
 
-def fetch_consensus(tab: str, below: bool = False) -> list:
-    """below=True면 현재가가 보고 분기 최저가 아래인 종목만 반환한다."""
+def fetch_consensus(tab: str, below: bool = False, sort: str = "") -> list:
+    """below=True면 현재가가 보고 분기 최저가 아래인 종목만 반환한다.
+    sort='price'(분기 저가 대비 낮은 순)·'price_desc'(높은 순)는 순위 상위 500개 안에서만 재정렬한다
+    (전체 대상으로 정렬하면 순위 하위 소형주가 상단을 차지하므로). 가격 없는 종목은 맨 뒤."""
     rank_col = {
         "composite": "composite_rank",
         "inst":      "inst_rank",
@@ -138,24 +140,36 @@ def fetch_consensus(tab: str, below: bool = False) -> list:
     conn = psycopg2.connect(**DB_CONFIG)
     try:
         with conn.cursor() as cur:
-            if _has_prices(cur):
-                price_cols = "ps.last_close, ps.q_low, ps.listed_in_qtr"
+            has_prices = _has_prices(cur)
+            if has_prices:
+                price_cols = "ps.last_close AS last_close, ps.q_low AS q_low, ps.listed_in_qtr AS listed_in_qtr"
                 price_join = "LEFT JOIN price_summary ps ON ps.cusip = c.cusip"
                 price_cond = "AND ps.last_close < ps.q_low" if below else ""
             else:
-                price_cols, price_join = "NULL, NULL, NULL", ""
+                price_cols = "NULL::float AS last_close, NULL::float AS q_low, NULL::boolean AS listed_in_qtr"
+                price_join = ""
                 price_cond = "AND FALSE" if below else ""
+            outer_order = {
+                "price":      "t.last_close / NULLIF(t.q_low, 0) ASC NULLS LAST, t.rnk",
+                "price_desc": "t.last_close / NULLIF(t.q_low, 0) DESC NULLS LAST, t.rnk",
+            }.get(sort if has_prices else "", "t.rnk")
             cur.execute(
                 f"""
-                SELECT c.composite_rank, c.inst_rank, c.buy_rank, c.weight_rank,
-                       c.ticker, c.company_name, c.cusip,
-                       c.composite_score, c.institution_count, c.total_buy_amount, c.total_weight_change,
-                       c.inst_score, c.buy_score, c.weight_score,
-                       {price_cols}
-                FROM consensus c {price_join}
-                WHERE c.{rank_col} IS NOT NULL {price_cond}
-                ORDER BY c.{rank_col} ASC
-                LIMIT 500
+                SELECT composite_rank, inst_rank, buy_rank, weight_rank, ticker, company_name, cusip,
+                       composite_score, institution_count, total_buy_amount, total_weight_change,
+                       inst_score, buy_score, weight_score, last_close, q_low, listed_in_qtr
+                FROM (
+                    SELECT c.composite_rank, c.inst_rank, c.buy_rank, c.weight_rank,
+                           c.ticker, c.company_name, c.cusip,
+                           c.composite_score, c.institution_count, c.total_buy_amount, c.total_weight_change,
+                           c.inst_score, c.buy_score, c.weight_score,
+                           {price_cols}, c.{rank_col} AS rnk
+                    FROM consensus c {price_join}
+                    WHERE c.{rank_col} IS NOT NULL {price_cond}
+                    ORDER BY c.{rank_col} ASC
+                    LIMIT 500
+                ) t
+                ORDER BY {outer_order}
                 """
             )
             return cur.fetchall()
@@ -819,7 +833,10 @@ def consensus():
     ]
 
     below = request.args.get("below") == "1"
-    db_rows = fetch_consensus(tab, below)
+    sort = request.args.get("sort", "")
+    if sort not in ("price", "price_desc"):
+        sort = ""
+    db_rows = fetch_consensus(tab, below, sort)
 
     consensus_rows = []
     for r in db_rows:
@@ -859,7 +876,7 @@ def consensus():
 
     tabs = [{'key': k, 'label': l, 'active': k == tab} for k, l in TAB_DEFS]
     return render_template('consensus.html', tab=tab, tabs=tabs, rows=consensus_rows,
-                           below=below, report_label=_fetch_latest_quarter())
+                           below=below, sort=sort, report_label=_fetch_latest_quarter())
 
 
 @app.route("/stock/<cusip>")
